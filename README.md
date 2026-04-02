@@ -83,4 +83,4 @@ This project follows strict coding standards suitable for industrial environment
 
 ---
 
-Developed with ❤️ by @thepartiocle
+Developed with ❤️ by @theparticle
