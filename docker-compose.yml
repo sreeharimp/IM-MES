@@ -1,0 +1,14 @@
+version: '3.9'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    container_name: agney-production-app
+    restart: always
+
+# Optionally, add a database if they want to run Supabase locally,
+# but for now, the frontend is pointed to a cloud instance.
