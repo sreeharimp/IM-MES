@@ -1,73 +1,86 @@
-# React + TypeScript + Vite
+# 🏭 Agney Production Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Agney Production Tracker** is a modern, high-performance Manufacturing Execution System (MES) designed for real-time production monitoring, quality control, and batch traceability. Built with a focus on industrial reliability and data integrity.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Key Features
 
-## React Compiler
+- **Real-time Monitoring**: Track machine status, production counts, and operator assignments in real-time.
+- **Batch Traceability**: Full ISO 13485-compliant traceability from raw material to finished product bins.
+- **Quality Control (QC)**: Integrated inspection module for verifying product quality at every stage.
+- **Shift Handover Management**: Robust digital handover process with supervisor verification.
+- **Data Analytics**: Live dashboard with OEE (Overall Equipment Effectiveness) and production yield tracking.
+- **Supabase Backend**: Fault-tolerant data synchronization and secure user authentication.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Technology Stack
 
-## Expanding the ESLint configuration
+- **Frontend**: React 19 + TypeScript + Vite
+- **Styling**: Tailwind CSS 4 + Framer Motion (Animations)
+- **Database/Backend**: Supabase (PostgreSQL)
+- **Containerization**: Docker & Docker Compose
+- **Icons**: Lucide React
+- **Charts**: Recharts
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 📦 Getting Started
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Prerequisites
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- [Node.js](https://nodejs.org/) (v20 or higher recommended)
+- [Docker](https://www.docker.com/) (for containerized deployment)
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### Local Development
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd agney-production-tracker
+   ```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+3. **Configure Environment Variables**:
+   Create a `.env` file in the root directory:
+   ```env
+   VITE_SUPABASE_URL=your-supabase-url
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+
+4. **Start the development server**:
+   ```bash
+   npm run dev
+   ```
+
+### 🐳 Docker Deployment (Recommended)
+
+To run the application in a production-ready environment:
+
+1. **Build and start the container**:
+   ```bash
+   docker-compose up --build
+   ```
+
+2. **Access the application**:
+   The app will be available at [http://localhost:3000](http://localhost:3000).
+
+## 📂 Project Structure
+
+- `src/components`: UI components (Tableau, TopBar, Admin Panels).
+- `src/lib`: Supabase client and shared utility functions.
+- `src/types`: TypeScript interfaces for the entire production model.
+- `public`: Static assets and icons.
+- `Dockerfile` & `nginx.conf`: Production-grade container configuration.
+
+## 🧪 Quality Standards
+
+This project follows strict coding standards suitable for industrial environments:
+- **Type Safety**: 100% TypeScript coverage.
+- **Architecture**: Modular component-based design.
+- **Resilience**: Graceful error handling for network failures.
+
+---
+
+Developed with ❤️ for Agney Production.

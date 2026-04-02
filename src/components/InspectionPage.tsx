@@ -1,4 +1,3 @@
-import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
 import React, { useState } from 'react';
 import { 
   ArrowRight, 
@@ -27,32 +26,7 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   const [filterProduct, setFilterProduct] = useState('');
 
   const handleScan = async () => {
-    try {
-      const isSupported = await BarcodeScanner.isSupported();
-      if (!isSupported) {
-        alert('Barcode scanning is not supported on this device/platform.');
-        return;
-      }
-
-      await BarcodeScanner.requestPermissions();
-      const { barcodes } = await BarcodeScanner.scan();
-      
-      if (barcodes.length > 0) {
-        const val = barcodes[0].displayValue;
-        setFilterBatch(val);
-        
-        const match = pendingCrates.find(c => c.id === val);
-        if (match) {
-          onStartInspection({ id: match.id, netQty: match.netQty, machineId: match.machineId });
-          setFilterBatch(''); 
-        } else {
-          alert(`Unit ID ${val} not found in pending inspections.`);
-        }
-      }
-    } catch (err) {
-      console.error('Scanning error:', err);
-      alert('Scanning failed. Please check permissions.');
-    }
+    alert('Browser-based camera scanning is being updated. Please type the Unit ID manually in the input field below.');
   };
 
   const filteredCrates = pendingCrates.filter(crate => {
