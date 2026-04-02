@@ -1,4 +1,4 @@
-# 🏭 Agney Production Tracker
+# 🏭 IM-MES Production Tracker
 
 **Agney Production Tracker** is a modern, high-performance Manufacturing Execution System (MES) designed for real-time production monitoring, quality control, and batch traceability. Built with a focus on industrial reliability and data integrity.
 
