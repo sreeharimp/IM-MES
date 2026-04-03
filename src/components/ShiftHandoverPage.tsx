@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, AlertTriangle } from 'lucide-react';
+import { ArrowRight, AlertTriangle, LogOut } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import type { ShiftSetting } from '../types';
 
 interface ShiftHandoverPageProps {
@@ -112,13 +113,18 @@ const ShiftHandoverPage: React.FC<ShiftHandoverPageProps> = ({ summary, shiftSet
               </select>
             </div>
 
-            <button 
-              className="btn bpri" 
-              style={{ padding: '16px', display: 'flex', justifyContent: 'center', gap: '8px', fontSize: '16px' }}
-              onClick={() => onAcknowledge(selectedShiftId)}
-            >
-              Acknowledge & Start Shift <ArrowRight size={20} />
-            </button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn bsec" style={{ flex: 1 }} onClick={() => supabase.auth.signOut()}>
+                <LogOut size={16} /> Log Out
+              </button>
+              <button 
+                className="btn bpri" 
+                style={{ flex: 1.5, padding: '16px', display: 'flex', justifyContent: 'center', gap: '8px', fontSize: '16px' }}
+                onClick={() => onAcknowledge(selectedShiftId)}
+              >
+                Acknowledge & Start Shift <ArrowRight size={20} />
+              </button>
+            </div>
           </div>
         </div>
 

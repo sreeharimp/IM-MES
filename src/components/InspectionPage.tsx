@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  ArrowRight, Package, Hash, Layers, CheckCircle2, Camera, X, RefreshCw
+  ArrowRight, Package, Hash, Layers, CheckCircle2, Camera, X
 } from 'lucide-react';
-import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import type { Machine, Product, Crate, BatchRecord } from '../types';
 
 interface InspectionPageProps {
@@ -25,7 +25,6 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   const [filterBatch, setFilterBatch] = useState('');
   const [filterProduct, setFilterProduct] = useState('');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [activeCamera, setActiveCamera] = useState<string | null>(null);
 
   const handleScan = () => {
     setIsScannerOpen(true);
@@ -167,14 +166,28 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
                     <span className="info-value" style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--amber)' }}>{crate.id}</span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1fr', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                     <div className="info-group">
                       <span className="info-label"><Hash size={10} /> Batch</span>
-                      <span className="info-value" style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text)' }}>{crate.batchId}</span>
+                      <span className="info-value" style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text)' }}>{crate.batchId}</span>
+                    </div>
+                    <div className="info-group">
+                      <span className="info-label"><Hash size={10} /> Machine</span>
+                      <span className="info-value" style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text)' }}>{crate.machineId}</span>
                     </div>
                     <div className="info-group">
                       <span className="info-label"><Hash size={10} /> Bin</span>
                       <span className="info-value" style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text)' }}>#{crate.binNumber}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1fr', gap: '8px' }}>
+                    <div className="info-group">
+                      <span className="info-label">Started</span>
+                      <span className="info-value" style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{new Date(crate.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                    <div className="info-group">
+                      <span className="info-label">Ended</span>
+                      <span className="info-value" style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text3)' }}>{new Date(crate.endTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                     </div>
                     <div className="info-group">
                       <span className="info-label"><Layers size={10} /> Qty</span>

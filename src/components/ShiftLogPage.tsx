@@ -161,6 +161,10 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
         // Also use products list to get name as requested
         const product = products.find(p => p.id === batch?.product_id);
 
+        const rejStr = c.rejected_qty > 0 ? ` · Rejected: ${c.rejected_qty}` : '';
+        const opStr = op?.employeeId ? ` · Op: ${op.name} (${op.employeeId})` : (op?.name ? ` · Op: ${op.name}` : '');
+        const insStr = c.inspected_by ? ` · QC by: ${c.inspected_by}` : '';
+
         unified.push({
           id: `crate-${c.id}`,
           type: 'crate',
@@ -170,7 +174,7 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
           operatorId: c.operator_id,
           operatorName: op?.name,
           summary: `${product?.name || batch?.product_name || 'Product'} · ${c.batch_id} · Bin #${c.bin_number} Completed`,
-          detail: `Net Qty: ${c.net_qty} · Scrap: ${c.startup_scrap} · QC: ${c.qc_sample}`,
+          detail: `Net: ${c.net_qty}${rejStr}${opStr}${insStr}`,
           badge: `Bin #${c.bin_number}`,
           badgeColor: 'var(--green)',
         });
@@ -228,7 +232,7 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
           machineId: al.machine_id,
           machineName: machine?.name || al.machine_id,
           operatorId: al.operator_id,
-          operatorName: op?.name,
+          operatorName: op?.employeeId ? `${op.name} (${op.employeeId})` : op?.name,
           supervisorName: al.supervisor_name,
           summary: al.event_type,
           detail: al.details,

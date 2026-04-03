@@ -14,7 +14,20 @@ CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS operators (id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS batch_records (id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS breakdown_records (id TEXT PRIMARY KEY);
-CREATE TABLE IF NOT EXISTS crates (id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS crates (
+    id TEXT PRIMARY KEY,
+    net_qty INTEGER,
+    rejected_qty INTEGER DEFAULT 0,
+    rejection_details JSONB,
+    operator_id TEXT,
+    supervisor_id TEXT,
+    inspected_by TEXT,
+    inspected_at TIMESTAMP WITH TIME ZONE,
+    mould_id TEXT,
+    material_batch TEXT,
+    shift_id TEXT,
+    status TEXT
+);
 
 -- 2. Ensure Moulds Columns
 ALTER TABLE moulds ADD COLUMN IF NOT EXISTS name TEXT;
@@ -150,5 +163,19 @@ BEGIN
     END IF;
 END $$;
 
--- 9. Force Schema Cache Reload (Optional but recommended)
+-- 10. Traceability Enhancement (ISO 13485)
+ALTER TABLE crates ADD COLUMN IF NOT EXISTS rejected_qty INTEGER DEFAULT 0;
+ALTER TABLE crates ADD COLUMN IF NOT EXISTS rejection_details JSONB;
+ALTER TABLE crates ADD COLUMN IF NOT EXISTS inspected_by TEXT;
+ALTER TABLE crates ADD COLUMN IF NOT EXISTS inspected_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE crates ADD COLUMN IF NOT EXISTS mould_id TEXT;
+ALTER TABLE crates ADD COLUMN IF NOT EXISTS material_batch TEXT;
+ALTER TABLE crates ADD COLUMN IF NOT EXISTS shift_id TEXT;
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS employee_code TEXT;
+ALTER TABLE authorized_supervisors ADD COLUMN IF NOT EXISTS employee_code TEXT;
+ALTER TABLE shift_summaries ADD COLUMN IF NOT EXISTS incoming_supervisor_name TEXT;
+ALTER TABLE shift_summaries ADD COLUMN IF NOT EXISTS remarks TEXT;
+
+-- 12. Force Schema Cache Reload (Optional but recommended)
 NOTIFY pgrst, 'reload schema';

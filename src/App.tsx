@@ -29,8 +29,12 @@ type Tab = 'Shop Floor' | 'Inspections' | 'Batch Log' | 'Machines' | 'Shift Log'
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
-  const [profile, setProfile] = useState<{ fullName: string, email: string, role: string } | null>(null);
+  const [profile, setProfile] = useState<{ fullName: string, email: string, role: string, employeeCode?: string } | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isViewOnly, setIsViewOnly] = useState(false);
+  const [isAuthorizedSession, setIsAuthorizedSession] = useState(false);
+  const [showTakeControlModal, setShowTakeControlModal] = useState(false);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('Shop Floor');
   const [, setCurrentTime] = useState(new Date());
@@ -45,6 +49,7 @@ const App: React.FC = () => {
   const [assigningOperatorMachineId, setAssigningOperatorMachineId] = useState<string | null>(null);
   const [isInitialAssignmentOpen, setIsInitialAssignmentOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ type: 'status' | 'complete', data: any } | null>(null);
+  const [pendingBreakdownMachineId, setPendingBreakdownMachineId] = useState<string | null>(null);
   
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
@@ -78,7 +83,7 @@ const App: React.FC = () => {
           supabase.from('app_settings').select('*').eq('id', 'global').maybeSingle(),
           supabase.from('shift_settings').select('*').order('id'),
           supabase.from('machines').select('*').order('id'),
-          supabase.from('profiles').select('full_name, email, role').eq('id', session.user.id).maybeSingle(),
+          supabase.from('profiles').select('full_name, email, role, employee_code').eq('id', session.user.id).maybeSingle(),
           supabase.from('products').select('*'),
           supabase.from('operators').select('*'),
           supabase.from('batch_records').select('*').order('start_time', { ascending: false }),
@@ -96,6 +101,15 @@ const App: React.FC = () => {
           outgoingSupervisorEmail: appData.last_handover_summary?.outgoing_supervisor_email,
           activeSupervisorName: appData.active_supervisor_name
         });
+
+        // 2b. Auto-Authorize if user is the active supervisor
+        if (pData && appData.active_supervisor_name === pData.full_name && !appData.pending_handover) {
+           setIsAuthorizedSession(true);
+        }
+
+        // 2c. Check localStorage for View-Only persistence
+        const wasViewOnly = localStorage.getItem('isViewOnly') === 'true';
+        if (wasViewOnly) setIsViewOnly(true);
         if (shiftData) setShiftSettings(shiftData.map((s: any) => ({ id: s.id, name: s.name, startTime: s.start_time, endTime: s.end_time })));
         if (machs) setMachines(machs.map((m: any) => ({
             id: m.id, name: m.name, model: m.model,
@@ -111,7 +125,7 @@ const App: React.FC = () => {
             oee: m.oee || 0, lastCleaningDone: m.last_cleaning_done, faiApproved: m.fai_approved
         })));
         if (pData) {
-          setProfile({ fullName: pData.full_name, email: pData.email, role: pData.role || 'Supervisor' });
+          setProfile({ fullName: pData.full_name, email: pData.email, role: pData.role || 'Supervisor', employeeCode: pData.employee_code });
         } else {
           // Auto-create missing profile from whitelist for new signups
           const { data: whitelist } = await supabase.from('authorized_supervisors').select('*').eq('email', session.user.email).maybeSingle();
@@ -119,11 +133,12 @@ const App: React.FC = () => {
             id: session.user.id,
             full_name: whitelist?.full_name || 'New User',
             email: session.user.email,
+            employee_code: whitelist?.employee_code || null,
             role: 'Supervisor'
           }).select().maybeSingle();
 
           if (createErr) console.error('Auto-Profile Error:', createErr);
-          if (neu) setProfile({ fullName: neu.full_name, email: neu.email, role: neu.role });
+          if (neu) setProfile({ fullName: neu.full_name, email: neu.email, role: neu.role, employeeCode: neu.employee_code });
         }
         if (prdData) setProducts(prdData.map((p: any) => ({ ...p, mouldId: p.mould_id, itemCode: p.item_code, batchIdentifier: p.batch_identifier, binQty: p.bin_qty, stdPackSize: p.std_pack_size })));
         if (opers) setOperators(opers.map((o: any) => ({ ...o, employeeId: o.employee_id, isCertified: o.is_certified })));
@@ -233,7 +248,7 @@ const App: React.FC = () => {
     const profileSubscription = supabase.channel(`profile_${session.user.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
         const p = payload.new as any;
-        setProfile({ fullName: p.full_name, email: p.email, role: p.role || 'Supervisor' });
+        setProfile({ fullName: p.full_name, email: p.email, role: p.role || 'Supervisor', employeeCode: p.employee_code });
       })
       .subscribe();
 
@@ -259,7 +274,10 @@ const App: React.FC = () => {
 
   const handleAction = async (mid: string, action: string) => {
     if (action === 'Start') setSettingUpMachineId(mid);
-    else if (action === 'Maintenance') setBreakingMachineId(mid);
+    else if (action === 'Maintenance') {
+      setPendingBreakdownMachineId(mid);
+      setSelectedMachineId(mid);
+    }
     else if (action === 'Stop') {
       setPendingAction({ type: 'status', data: { machineId: mid, nextStatus: 'Idle' } });
     }
@@ -292,6 +310,14 @@ const App: React.FC = () => {
         last_handover_summary: null,
         active_supervisor_name: profile?.fullName || 'Unknown'
       });
+      
+      localStorage.removeItem('isViewOnly'); // Clear view-mode when taking control
+
+      // Update the previous handover record with the incoming supervisor name
+      await supabase.from('shift_summaries')
+        .update({ incoming_supervisor_name: profile?.fullName })
+        .order('handover_time', { ascending: false })
+        .limit(1);
 
       if (error) {
         console.error('Handover Error:', error.message);
@@ -301,6 +327,7 @@ const App: React.FC = () => {
 
       setMachines(prev => prev.map(m => ({ ...m, currentShiftProduction: 0 })));
       setAppSettings(prev => prev ? { ...prev, pendingHandover: false, currentShift: sid, activeSupervisorName: profile?.fullName || 'Unknown' } : null);
+      setIsAuthorizedSession(true);
       setIsInitialAssignmentOpen(true);
     } catch (err) { 
       console.error('Handover Acknowledge Catch:', err); 
@@ -311,7 +338,7 @@ const App: React.FC = () => {
   const handleBinComplete = async (data: any) => {
     if (!selectedMachineId) return;
     
-    // 1. Fetch latest machine state to prevent bin number collisions
+    // 1. Fetch latest machine state
     const { data: latestMachine } = await supabase.from('machines').select('*').eq('id', selectedMachineId).single();
     if (!latestMachine) return;
 
@@ -319,13 +346,18 @@ const App: React.FC = () => {
     const { batchId: currentBatchId, batchDateStr: currentBatchDate } = getBatchSummary(p?.batchIdentifier || 'XX');
     
     let absBatchId = latestMachine.active_batch_id || currentBatchId;
-    let bNo = latestMachine.current_bin_number || 1;
 
+    // 2. Fetch/Update Batch Record to get global bin count
+    const { data: latestBatch } = await supabase.from('batch_records').select('*').eq('id', absBatchId).maybeSingle();
+    
     // Auto Rollover at 6 AM
-    if (latestMachine.active_batch_id && latestMachine.active_batch_date && latestMachine.active_batch_date !== currentBatchDate) {
+    const isRollover = latestMachine.active_batch_id && latestMachine.active_batch_date && latestMachine.active_batch_date !== currentBatchDate;
+    
+    let bNo: number;
+    if (isRollover) {
       const { data: oldBatch } = await supabase.from('batch_records').select('*').eq('id', latestMachine.active_batch_id).single();
       
-      // Use upsert to handle multiple machines producing same product
+      // Initialize new batch record for the new day
       await supabase.from('batch_records').upsert({ 
         id: currentBatchId, 
         machine_id: latestMachine.id, 
@@ -354,30 +386,25 @@ const App: React.FC = () => {
       
       absBatchId = currentBatchId;
       bNo = 1;
+    } else {
+      // Not a rollover, use batch-wide count plus one
+      bNo = (latestBatch?.crates || 0) + 1;
     }
 
-    // Include machine ID in CID to prevent collisions when multiple machines produce same batch
-    const cid = `${absBatchId}-${latestMachine.id}-B${String(bNo).padStart(2, '0')}`;
-    const neu = { 
+    // New Bin Identification: Batch#-MachineID-Bin#
+    const cid = `${absBatchId}-${latestMachine.id}-${bNo}`;
+    
+    const neu: any = { 
       id: cid, batch_id: absBatchId, machine_id: latestMachine.id, bin_number: bNo, 
       start_time: new Date(latestMachine.bin_start_time || Date.now()).toISOString(), end_time: new Date().toISOString(), gross_qty: data.grossQty, 
       startup_scrap: data.startupScrap, qc_sample: data.qcSample, net_qty: data.netQty, 
-      operator_id: latestMachine.current_operator_id || 'UNASSIGNED', supervisor_id: profile?.email || 'System', status: 'Pending Inspection' 
+      operator_id: latestMachine.current_operator_id || 'UNASSIGNED', supervisor_id: profile?.email || 'System', 
+      mould_id: latestMachine.current_mould_id || null, material_batch: latestMachine.material_batch || null,
+      shift_id: appSettings?.currentShift || 'A',
+      status: 'Pending Inspection' 
     };
 
-    const { error: crateErr } = await supabase.from('crates').insert(neu);
-    if (crateErr) {
-      console.error('Crate Insert Error:', crateErr);
-      if (crateErr.code === '23505') { 
-        alert(`This bin (number ${bNo}) has already been logged for this machine. If you just did a rollover, please check your records.`);
-      } else {
-        alert(`Could not log bin: ${crateErr.message}`);
-      }
-      setSelectedMachineId(null);
-      return;
-    }
-
-    // Optimistic Update
+    // Performance: Optimistic UI updates
     setMachines(prev => prev.map(m => m.id === latestMachine.id ? { 
       ...m, 
       currentBinNumber: bNo + 1, 
@@ -386,30 +413,59 @@ const App: React.FC = () => {
       binStartTime: Date.now()
     } : m));
 
+    setPendingCrates(prev => [{ 
+      id: cid, batchId: neu.batch_id, machineId: neu.machine_id, binNumber: neu.bin_number, 
+      startTime: neu.start_time, endTime: neu.end_time, grossQty: neu.gross_qty, 
+      startupScrap: neu.startup_scrap, qcSample: neu.qc_sample, netQty: neu.net_qty, 
+      operatorId: neu.operator_id, supervisorId: neu.supervisor_id, status: 'Pending Inspection' 
+    } as unknown as Crate, ...prev]);
+
+    const { error: crateErr } = await supabase.from('crates').insert(neu);
+    if (crateErr) {
+      console.error('Crate Insert Error:', crateErr);
+      if (crateErr.code === '23505') { 
+        alert(`Bin collision detected! This batch already has a record for ${cid}.`);
+      } else {
+        alert(`Could not log bin: ${crateErr.message}`);
+      }
+      setSelectedMachineId(null);
+      return;
+    }
+
+    // Update global state
+    await supabase.from('batch_records').update({ 
+      crates: bNo, 
+      total_output: (latestBatch?.total_output || 0) + data.netQty 
+    }).eq('id', absBatchId);
+
     await supabase.from('machines').update({ 
       current_bin_number: bNo + 1, 
       current_shift_production: (latestMachine.current_shift_production || 0) + data.netQty, 
       current_day_production: (latestMachine.current_day_production || 0) + data.netQty, 
       bin_start_time: Date.now() 
     }).eq('id', latestMachine.id);
-    
-    if (absBatchId) {
-      const { data: latestBatch } = await supabase.from('batch_records').select('crates, total_output').eq('id', absBatchId).single();
+
+    setSelectedMachineId(null);
+    // If this was triggered by a breakdown request, open the breakdown modal now
+    if (pendingBreakdownMachineId === latestMachine.id) {
+      setBreakingMachineId(latestMachine.id);
+      setPendingBreakdownMachineId(null);
+    }
+    setSelectedMachineId(null);
+  };
+
+  const handleOpenBinComplete = async (mid: string) => {
+    // Sync with global batch count before opening
+    const m = machines.find(ma => ma.id === mid);
+    if (m && m.activeBatchId) {
+      const { data: latestBatch } = await supabase.from('batch_records').select('crates').eq('id', m.activeBatchId).maybeSingle();
       if (latestBatch) {
-        await supabase.from('batch_records').update({ 
-          crates: (latestBatch.crates || 0) + 1, 
-          total_output: (latestBatch.total_output || 0) + data.netQty 
-        }).eq('id', absBatchId);
+        const nextBin = (latestBatch.crates || 0) + 1;
+        await supabase.from('machines').update({ current_bin_number: nextBin }).eq('id', mid);
+        setMachines(prev => prev.map(ma => ma.id === mid ? { ...ma, currentBinNumber: nextBin } : ma));
       }
     }
-
-    setPendingCrates(prev => [...prev, { 
-      id: cid, batchId: neu.batch_id, machineId: neu.machine_id, binNumber: neu.bin_number, 
-      startTime: neu.start_time, endTime: neu.end_time, grossQty: neu.gross_qty, 
-      startupScrap: neu.startup_scrap, qcSample: neu.qc_sample, netQty: neu.net_qty, 
-      operatorId: neu.operator_id, supervisorId: neu.supervisor_id, status: neu.status 
-    } as unknown as Crate]);
-    setSelectedMachineId(null);
+    setSelectedMachineId(mid);
   };
 
   const renderContent = () => {
@@ -426,7 +482,7 @@ const App: React.FC = () => {
             </div>
             <div className="mach-grid">
               {machines.map(m => (
-                <MachineCard key={m.id} machine={m} products={products} operators={operators} moulds={moulds} onAction={handleAction} onComplete={() => setSelectedMachineId(m.id)} onAssign={() => setAssigningOperatorMachineId(m.id)} onResolve={() => setResolvingMachineId(m.id)} />
+                <MachineCard key={m.id} machine={m} products={products} operators={operators} moulds={moulds} onAction={isViewOnly ? () => {} : handleAction} onComplete={isViewOnly ? () => {} : handleOpenBinComplete} onAssign={isViewOnly ? () => {} : () => setAssigningOperatorMachineId(m.id)} onResolve={isViewOnly ? () => {} : () => setResolvingMachineId(m.id)} />
               ))}
             </div>
           </div>
@@ -448,8 +504,8 @@ const App: React.FC = () => {
   if (!session) return <Login onSuccess={() => {}} />;
   if (!profile) return <div className="loading">Initializing...</div>;
 
-  // Handover Flow (Supervisors Only)
-  if (appSettings?.pendingHandover && profile.role !== 'Admin' && profile.role !== 'PowerUser') {
+  // 1. Handover Flow (Only for supervisors in transition)
+  if (appSettings?.pendingHandover && !isAuthorizedSession && !isViewOnly && profile.role !== 'Admin' && profile.role !== 'PowerUser') {
     if (profile.email.toLowerCase() === appSettings.lastHandoverSummary?.outgoing_supervisor_email?.toLowerCase()) {
       return (
         <div className="loading" style={{flexDirection:'column', gap:'20px'}}>
@@ -473,7 +529,59 @@ const App: React.FC = () => {
     );
   }
 
-  // Initial Onboarding Step (Operator Assignment - Supervisors Only)
+  // 2. Login Mode Selection Logic (If predecessor hasn't signed out)
+  if (!isAuthorizedSession && !isViewOnly && profile.role !== 'Admin' && profile.role !== 'PowerUser' && !appSettings?.pendingHandover) {
+    return (
+      <div className="ov">
+        <div className="modal animate-scale-in" style={{ width: '400px', textAlign:'center' }}>
+          <div className="mbd" style={{padding:'30px'}}>
+             <div className="ua" style={{background:'var(--blue)', color:'white', marginBottom:'20px'}}>S</div>
+             <h2 style={{fontSize:'20px', marginBottom:'10px'}}>Active Session Detected</h2>
+             <p style={{color:'var(--text3)', fontSize:'13px', marginBottom:'30px'}}>
+                The previous supervisor has not signed out yet. Would you like to take control of the station or continue in view-only mode?
+             </p>
+             <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
+                <button className="btn bpri bfull" onClick={() => setShowTakeControlModal(true)}>Take Control</button>
+                <button className="btn bsec bfull" onClick={() => {
+                   setIsViewOnly(true);
+                   localStorage.setItem('isViewOnly', 'true');
+                }}>View Only Mode</button>
+                <button className="btn bdan bfull" style={{background:'none', border:'none', color:'var(--red)'}} onClick={() => {
+                   localStorage.removeItem('isViewOnly');
+                   supabase.auth.signOut();
+                }}>Sign Out / Exit</button>
+             </div>
+          </div>
+        </div>
+
+        {/* Local Takeover Confirmation Modal (Needed because main App isn't rendered yet) */}
+        {showTakeControlModal && (
+          <div className="ov" style={{zIndex:10001}}>
+            <div className="modal animate-scale-in" style={{ width: '400px' }}>
+              <div className="mhd">
+                 <div className="mtit">Taking Station Control</div>
+              </div>
+              <div className="mbd" style={{padding:'20px'}}>
+                 <p style={{color:'var(--text2)', fontSize:'14px', marginBottom:'20px'}}>
+                    You are taking over the system without a formal handover summary. Please confirm to proceed.
+                 </p>
+                 <div style={{display:'flex', gap:'12px'}}>
+                    <button className="btn bsec" style={{flex:1}} onClick={() => setShowTakeControlModal(false)}>Cancel</button>
+                    <button className="btn bpri" style={{flex:1}} onClick={() => {
+                       setShowTakeControlModal(false);
+                       setIsAuthorizedSession(true);
+                       handleHandoverAcknowledge(appSettings?.currentShift || 'A');
+                    }}>Confirm Takeover</button>
+                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 3. Initial Onboarding Step (Operator Assignment)
   if (isInitialAssignmentOpen && profile.role !== 'Admin' && profile.role !== 'PowerUser') {
     return (
       <div style={{ height: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -492,9 +600,13 @@ const App: React.FC = () => {
               const a = asgs.find(asg => asg.machineId === m.id);
               return a ? { ...m, currentOperatorId: a.operatorId } : m;
             }));
+            setIsAuthorizedSession(true);
             setIsInitialAssignmentOpen(false);
           }}
-          onClose={() => setIsInitialAssignmentOpen(false)}
+          onClose={() => {
+            setIsAuthorizedSession(true);
+            setIsInitialAssignmentOpen(false);
+          }}
         />
       </div>
     );
@@ -502,6 +614,30 @@ const App: React.FC = () => {
 
   return (
     <div id="app-layout">
+      {/* Session Modals Overlaying the Main App */}
+      {showTakeControlModal && (
+        <div className="ov" style={{zIndex:10000}}>
+          <div className="modal animate-scale-in" style={{ width: '400px' }}>
+            <div className="mhd">
+               <div className="mtit">Taking Station Control</div>
+            </div>
+            <div className="mbd" style={{padding:'20px'}}>
+               <p style={{color:'var(--text2)', fontSize:'14px', marginBottom:'20px'}}>
+                  {isViewOnly ? 'Upgrade your current view-only session to an active supervisor session?' : 'You are taking over the system without a formal handover summary. Please confirm to proceed.'}
+               </p>
+               <div style={{display:'flex', gap:'12px'}}>
+                  <button className="btn bsec" style={{flex:1}} onClick={() => setShowTakeControlModal(false)}>Cancel</button>
+                  <button className="btn bpri" style={{flex:1}} onClick={() => {
+                     setShowTakeControlModal(false);
+                     setIsViewOnly(false); // Reset view-only status
+                     handleHandoverAcknowledge(appSettings?.currentShift || 'A');
+                  }}>Confirm Takeover</button>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div id="sidebar" className={isSidebarCollapsed ? 'collapsed' : ''}>
         <div className="sl" style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', minHeight: '64px' }}>
           {!isSidebarCollapsed && (
@@ -524,7 +660,7 @@ const App: React.FC = () => {
             <NavItem icon={<History size={16}/>} label="Batch Log" active={activeTab==='Batch Log'} onClick={()=>setActiveTab('Batch Log')}/>
             <NavItem icon={<ScrollText size={16}/>} label="Shift Log" active={activeTab==='Shift Log'} onClick={()=>setActiveTab('Shift Log')}/>
             <NavItem icon={<AlertCircle size={16}/>} label="Breakdowns" active={activeTab==='Breakdowns'} onClick={()=>setActiveTab('Breakdowns')}/>
-            {(profile?.role === 'Admin' || profile?.role === 'PowerUser') && (
+            {!isViewOnly && (profile?.role === 'Admin' || profile?.role === 'PowerUser') && (
               <NavItem icon={<Cpu size={16}/>} label="Admin Console" active={activeTab==='Machines'} onClick={()=>setActiveTab('Machines')}/>
             )}
         </nav>
@@ -537,7 +673,19 @@ const App: React.FC = () => {
             <div className="ps">LIVE · Unit Output Dashboard</div>
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', background: 'rgba(255,255,255,0.03)', padding: '6px 20px', borderRadius: '30px', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', background: 'rgba(255,255,255,0.03)', padding: '6px 12px', borderRadius: '30px', border: '1px solid var(--border)' }}>
+            <button 
+              className="btn bsm" 
+              style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0 }}
+              onClick={() => {
+                const neu = !isDarkMode;
+                setIsDarkMode(neu);
+                document.documentElement.classList.toggle('light-theme', !neu);
+              }}
+            >
+              {isDarkMode ? '☀️' : '🌙'}
+            </button>
+            <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text)' }}>
                 {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
@@ -552,15 +700,23 @@ const App: React.FC = () => {
               {(profile?.role === 'Supervisor' ? profile?.fullName : appSettings?.activeSupervisorName) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text2)', borderLeft: '1px solid var(--border)', paddingLeft: '12px' }}>
                   <UserPlus size={14} style={{ color: 'var(--blue)' }} />
-                  <span style={{ fontSize: '11px', fontWeight: 600 }}>{profile?.role === 'Supervisor' ? profile?.fullName : appSettings?.activeSupervisorName}</span>
+                  <span style={{ fontSize: '11px', fontWeight: 600 }}>
+                    {profile?.role === 'Supervisor' ? `${profile?.fullName} (${profile?.employeeCode || 'N/A'})` : appSettings?.activeSupervisorName}
+                    {isViewOnly && <span className="pill pd" style={{marginLeft:'8px', fontSize:'8px'}}>VIEW ONLY</span>}
+                  </span>
                 </div>
               )}
             </div>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <button className="btn bdan bsm" onClick={(profile.role === 'Admin' || profile.role === 'PowerUser') ? () => supabase.auth.signOut() : ()=>setIsHandoverSummaryOpen(true)}>
-              <LogOut size={16}/> Sign Out
+          <div style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            {isViewOnly && (
+              <button className="btn bpri bsm" onClick={() => setShowTakeControlModal(true)}>
+                <UserPlus size={16}/> Take Active Control
+              </button>
+            )}
+            <button className="btn bdan bsm" onClick={(profile.role === 'Admin' || profile.role === 'PowerUser' || isViewOnly) ? () => supabase.auth.signOut() : ()=>setIsHandoverSummaryOpen(true)}>
+              <LogOut size={16}/> {isViewOnly ? 'Exit View Mode' : 'Sign Out'}
             </button>
           </div>
         </header>
@@ -632,11 +788,20 @@ const App: React.FC = () => {
             alert(`Handover failed! Your summary was not saved: ${err.message}`);
           }
       }} />}
-      {selectedMachineId && <BinCompleteModal machine={machines.find(m=>m.id===selectedMachineId)!} binNumber={machines.find(m=>m.id===selectedMachineId)!.currentBinNumber} onClose={()=>setSelectedMachineId(null)} onConfirm={handleBinComplete} />}
+      {selectedMachineId && <BinCompleteModal machine={machines.find(m=>m.id===selectedMachineId)!} binNumber={machines.find(m=>m.id===selectedMachineId)!.currentBinNumber} onClose={()=>{setSelectedMachineId(null); setPendingBreakdownMachineId(null);}} onConfirm={handleBinComplete} />}
       {inspectingBin && <InspectionModal binId={inspectingBin.id} netQty={inspectingBin.netQty} onClose={()=>setInspectingBin(null)} onConfirm={async (data)=>{
+          const rejDetails = data.rejections.reduce((acc: any, r: any) => { if (r.count > 0) acc[r.category] = r.count; return acc; }, {});
+          const rejQty = data.rejections.reduce((sum: number, r: any) => sum + r.count, 0);
           const diff = data.goodQty - inspectingBin.netQty;
-          
-          await supabase.from('crates').update({ status: 'Completed', net_qty: data.goodQty }).eq('id', inspectingBin.id);
+
+          await supabase.from('crates').update({ 
+            status: 'Completed', 
+            net_qty: data.goodQty,
+            rejected_qty: rejQty,
+            rejection_details: rejDetails,
+            inspected_by: profile?.fullName || 'System',
+            inspected_at: new Date().toISOString()
+          }).eq('id', inspectingBin.id);
           
           if (diff !== 0) {
             const crate = pendingCrates.find(c => c.id === inspectingBin.id);
@@ -753,12 +918,26 @@ const App: React.FC = () => {
               await addLogEntry(settingUpMachineId, 'Machine Resumed', `Resumed with new batch rollover for ${p.name}`);
             } else {
               // Same day - just start running
+              // Fetch latest batch count to ensure we continue from the correct number
+              const { data: latestBatch } = await supabase.from('batch_records').select('crates').eq('id', bid).maybeSingle();
+              const nextBin = (latestBatch?.crates || 0) + 1;
+
               await supabase.from('machines').update({ 
                 status: 'Running', 
                 bin_start_time: Date.now(),
-                bin_target: data.binTarget
+                bin_target: data.binTarget,
+                current_bin_number: nextBin
               }).eq('id', settingUpMachineId);
-              await addLogEntry(settingUpMachineId, 'Machine Resumed', `Resumed production for ${p.name}`);
+
+              setMachines(prev => prev.map(m => m.id === settingUpMachineId ? { 
+                ...m, 
+                status: 'Running', 
+                binStartTime: Date.now(), 
+                binTarget: data.binTarget, 
+                currentBinNumber: nextBin 
+              } : m));
+
+              await addLogEntry(settingUpMachineId, 'Machine Resumed', `Resumed production for ${p.name}. Next Bin: #${nextBin}`);
             }
           }
           
@@ -840,7 +1019,7 @@ const MachineCard = ({ machine, products, operators, moulds, onAction, onComplet
                 <div className="om"><div className="oml">Operator</div><div className="omv" style={{fontSize:'10px'}}>{o?.name || '---'}</div></div>
             </div>
             <div className="mbr">
-               <button className="mbtn mpri" style={{flex:2}} onClick={onComplete}><CheckCircle2 size={13}/> Complete Bin</button>
+               <button className="mbtn mpri" style={{flex:2}} onClick={() => onComplete(machine.id)}><CheckCircle2 size={13}/> Complete Bin</button>
                <button className="mbtn mwrn" style={{flex:1}} onClick={()=>onAction(machine.id,'Maintenance')}><Wrench size={12}/> Breakdown</button>
                <button className="mbtn mdan" style={{flex:1}} onClick={()=>onAction(machine.id,'Stop')}><Square size={12}/> STOP</button>
             </div>

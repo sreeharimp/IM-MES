@@ -92,8 +92,15 @@ export interface Crate {
   startupScrap: number;
   qcSample: number;
   netQty: number;
+  rejectedQty?: number;
+  rejectionDetails?: any; // JSON object { "Reason": count }
   operatorId: string;
   supervisorId: string;
+  inspectedBy?: string;
+  inspectedAt?: string;
+  mouldId?: string;
+  materialBatch?: string;
+  shiftId?: string;
   status: 'Pending Inspection' | 'In Inspection' | 'Completed';
 }
 

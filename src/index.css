@@ -29,6 +29,38 @@
   --rl: 10px;
 }
 
+.light-theme {
+  --bg: #f4f6f9;
+  --bg2: #ffffff;
+  --bg3: #ebedef;
+  --bg4: #dee2e6;
+  --border: #d2d6de;
+  --border2: #adb5bd;
+  --text: #212529;
+  --text2: #495057;
+  --text3: #6c757d;
+  --green: #1e7e34; /* Darker, more vibrant Green */
+  --green-dim: #9edba6;
+  --green-bg: #e8f5e9;
+  --amber: #f29900; /* Richer Amber */
+  --amber-dim: #ffeeba;
+  --amber-bg: #fffbf0;
+  --red: #d93025; /* Google Red */
+  --red-dim: #f5c6cb;
+  --red-bg: #fdf5f6;
+  --blue: #1a73e8; /* Standard Google Blue */
+  --blue-bg: #f1f7ff;
+  --purple: #6f42c1;
+  --purple-bg: #f6f2fe;
+
+  /* Layout Specific Branding */
+  --sidebar-bg: #1a73e8; /* Same Google Blue as TopBar */
+  --sidebar-text: #ffffff;
+  --topbar-bg: #1a73e8;
+  --topbar-text: #ffffff;
+  --card-bg: #ffffff;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -73,11 +105,16 @@ button, input, select, textarea {
 #sidebar {
   width: 200px;
   flex-shrink: 0;
-  background: var(--bg2);
+  background: var(--sidebar-bg, var(--bg2));
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   transition: width 0.3s ease;
+}
+
+.light-theme #sidebar {
+  background: var(--sidebar-bg);
+  border-right-color: rgba(255,255,255,0.1);
 }
 
 #sidebar.collapsed {
@@ -182,7 +219,7 @@ button, input, select, textarea {
   font-weight: 600;
   letter-spacing: .1em;
   text-transform: uppercase;
-  color: var(--text3);
+  color: rgba(255,255,255,0.6);
   padding: 10px 16px 4px;
 }
 
@@ -209,6 +246,44 @@ button, input, select, textarea {
   color: var(--green);
   border-left-color: var(--green);
   font-weight: 500;
+}
+
+/* Light Theme Overrides */
+.light-theme .ni,
+.light-theme .ni .ntxt,
+.light-theme .ni .nic,
+.light-theme .ni .nic svg {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.light-theme .ni {
+  font-size: 13.5px;
+  font-weight: 600;
+  border-left: none;
+  border-radius: 8px;
+  margin: 4px 12px;
+  padding: 12px 16px;
+  background: transparent;
+}
+
+.light-theme .ni:hover {
+  background: rgba(255,255,255,0.15);
+  color: #ffffff !important;
+  transform: translateX(4px);
+}
+
+.light-theme .ni.active {
+  background: #ffffff;
+  color: var(--blue) !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.light-theme .ni.active .nic,
+.light-theme .ni.active .ntxt,
+.light-theme .ni.active .nic svg {
+  color: var(--blue) !important;
+  opacity: 1 !important;
 }
 
 .nic {
@@ -257,6 +332,71 @@ button, input, select, textarea {
   align-items: center;
   background: var(--bg2);
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+
+.light-theme #topbar {
+  background: var(--topbar-bg);
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+.light-theme #topbar h1, 
+.light-theme #topbar div, 
+.light-theme #topbar span, 
+.light-theme #topbar svg,
+.light-theme #topbar p,
+.light-theme #topbar .un,
+.light-theme #topbar .us {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.light-theme #topbar .us {
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn {
+  border-radius: var(--r);
+  font-weight: 500;
+  font-size: 11px;
+  padding: 6px 12px;
+  transition: all .1s;
+  cursor: pointer;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.light-theme .btn {
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 16px;
+  transition: all 0.2s;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.btn.bpri { background: var(--blue); color: #fff; }
+.btn.bsec { background: var(--bg3); color: var(--text); border-color: var(--border); }
+.btn.bdan { background: var(--red); color: #fff; }
+
+.light-theme .btn.bpri:hover { background: #1557b0; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(26,115,232,0.3); }
+.light-theme .btn.bdan:hover { background: #b71c1c; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(217,48,37,0.3); }
+
+.light-theme #sidebar svg,
+.light-theme .ni .nic svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
 .pt {
@@ -278,9 +418,10 @@ button, input, select, textarea {
 
 /* Components */
 .card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
+  background: var(--card-bg, var(--bg2));
   border-radius: var(--rl);
+  border: 1px solid var(--border);
+  box-shadow: var(--card-shadow);
   overflow: hidden;
   margin-bottom: 14px;
 }

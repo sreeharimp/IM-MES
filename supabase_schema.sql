@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   full_name TEXT,
   email TEXT,
   role TEXT DEFAULT 'Supervisor',
+  employee_code TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 CREATE TABLE IF NOT EXISTS authorized_supervisors (
   email TEXT PRIMARY KEY,
   full_name TEXT NOT NULL,
+  employee_code TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -132,8 +134,15 @@ CREATE TABLE crates (
   startup_scrap INTEGER DEFAULT 0,
   qc_sample INTEGER DEFAULT 0,
   net_qty INTEGER,
+  rejected_qty INTEGER DEFAULT 0,
+  rejection_details JSONB,
   operator_id TEXT,
   supervisor_id TEXT,
+  inspected_by TEXT,
+  inspected_at TIMESTAMP WITH TIME ZONE,
+  mould_id TEXT,
+  material_batch TEXT,
+  shift_id TEXT,
   status TEXT
 );
 
@@ -185,7 +194,9 @@ CREATE TABLE IF NOT EXISTS shift_summaries (
   total_output INTEGER DEFAULT 0,
   running_machines INTEGER DEFAULT 0,
   pending_crates INTEGER DEFAULT 0,
-  handover_time TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  handover_time TIMESTAMP WITH TIME ZONE,
+  remarks TEXT,
+  incoming_supervisor_name TEXT
 );
 
 ALTER PUBLICATION supabase_realtime ADD TABLE app_settings;

@@ -10,7 +10,7 @@ interface AdminDashboardProps {
   products: Product[];
   rawMaterials: RawMaterial[];
   productMaterials: ProductMaterial[];
-  supervisors: { email: string, full_name: string }[];
+  supervisors: { email: string, full_name: string, employee_code?: string }[];
   shiftSettings: ShiftSetting[];
   currentUserRole: string;
 }
@@ -51,8 +51,8 @@ const ShiftRow = ({ s, updateShiftTiming }: { s: ShiftSetting, updateShiftTiming
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, moulds, products, rawMaterials, productMaterials, supervisors, shiftSettings, currentUserRole }) => {
   const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users'>('machines');
-  const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string }[]>([]);
-  const [newSupervisor, setNewSupervisor] = useState({ email: '', fullName: '' });
+  const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string }[]>([]);
+  const [newSupervisor, setNewSupervisor] = useState({ email: '', fullName: '', employeeCode: '' });
   const [newOperator, setNewOperator] = useState({ name: '', employeeId: '' });
   const [newMould, setNewMould] = useState({ id: '', name: '', cavities: 4, cycleTime: 20 });
   const [newProduct, setNewProduct] = useState({ name: '', mouldId: '', itemCode: '', batchIdentifier: '', binQty: 4000, stdPackSize: 1000 });
@@ -64,12 +64,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
   const [editingMould, setEditingMould] = useState<string | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<string | null>(null);
   const [editingSupervisor, setEditingSupervisor] = useState<string | null>(null);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editingMachine, setEditingMachine] = useState<string | null>(null);
+
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const showSuccess = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const showError = (msg: string) => {
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(null), 3000);
+  };
 
   React.useEffect(() => {
     const fetchProfiles = async () => {
       const { data } = await supabase.from('profiles').select('*').order('full_name');
-      if (data) setProfiles(data.map(p => ({ id: p.id, email: p.email, full_name: p.full_name, role: p.role })));
+      if (data) setProfiles(data.map(p => ({ id: p.id, email: p.email, full_name: p.full_name, role: p.role, employee_code: p.employee_code })));
     };
     fetchProfiles();
     
@@ -81,18 +95,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
     return () => { supabase.removeChannel(sub); };
   }, []);
 
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  const showSuccess = (msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3000);
-  };
-
   const updateShiftTiming = async (id: string, startTime: string, endTime: string) => {
     if (!startTime || !endTime) return;
     const { error } = await supabase.from('shift_settings').update({ start_time: startTime, end_time: endTime }).eq('id', id);
     if (error) {
-      alert(`Error updating shift: ${error.message}`);
+      showError(`Error updating shift: ${error.message}`);
     } else {
       showSuccess(`Shift ${id} updated to ${startTime} - ${endTime}`);
     }
@@ -100,7 +107,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
 
   const saveOperator = async () => {
     if (!newOperator.name || !newOperator.employeeId) {
-      alert('Operator Name and Employee ID are required.');
+      showError('Operator Name and Employee ID are required.');
       return;
     }
     
@@ -134,43 +141,75 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
 
   const saveSupervisor = async () => {
     if (!newSupervisor.email || !newSupervisor.fullName) {
-      alert('Email and Full Name are required.');
+      showError('Email and Full Name are required.');
       return;
-    }
-    
-    let error;
-    if (editingSupervisor) {
-      const { error: err } = await supabase.from('authorized_supervisors').update({
-        full_name: newSupervisor.fullName
-      }).eq('email', editingSupervisor);
-      error = err;
-    } else {
-      const { error: err } = await supabase.from('authorized_supervisors').insert({
-        email: newSupervisor.email.toLowerCase(),
-        full_name: newSupervisor.fullName
-      });
-      error = err;
     }
 
-    if (error) {
-      alert(`Error: ${error.message}`);
-      return;
+    if (editingProfileId) {
+      const { error } = await supabase.from('profiles').update({
+        full_name: newSupervisor.fullName,
+        employee_code: newSupervisor.employeeCode
+      }).eq('id', editingProfileId);
+      if (error) { showError(error.message); return; }
+    } else {
+      const { error } = await supabase.from('authorized_supervisors').upsert({
+        email: newSupervisor.email.toLowerCase(),
+        full_name: newSupervisor.fullName,
+        employee_code: newSupervisor.employeeCode
+      });
+      if (error) { showError(error.message); return; }
+      
+      // If profile already exists for this email, update it too
+      await supabase.from('profiles').update({ 
+        full_name: newSupervisor.fullName,
+        employee_code: newSupervisor.employeeCode 
+      }).eq('email', newSupervisor.email.toLowerCase());
     }
-    showSuccess(`Supervisor ${newSupervisor.fullName} ${editingSupervisor ? 'updated' : 'authorized'}.`);
-    setNewSupervisor({ email: '', fullName: '' });
+
+    showSuccess(`User ${newSupervisor.fullName} ${editingSupervisor || editingProfileId ? 'updated' : 'authorized'}.`);
+    setNewSupervisor({ email: '', fullName: '', employeeCode: '' });
     setEditingSupervisor(null);
+    setEditingProfileId(null);
+  };
+
+  const cancelEdit = () => {
+    setNewSupervisor({ email: '', fullName: '', employeeCode: '' });
+    setEditingSupervisor(null);
+    setEditingProfileId(null);
+    setEditingProduct(null);
+    setEditingOperator(null);
+    setEditingMould(null);
+    setEditingMaterial(null);
+    setEditingMachine(null);
+    setNewProduct({ name: '', mouldId: '', itemCode: '', batchIdentifier: '', binQty: 4000, stdPackSize: 1000 });
+    setNewOperator({ name: '', employeeId: '' });
+    setNewMould({ id: '', name: '', cavities: 4, cycleTime: 20 });
+    setNewMaterial({ id: '', name: '', vendor: '' });
+    setNewMachine({ id: '', name: '', model: '' });
+  };
+
+  const editProfile = (p: any) => {
+    setNewSupervisor({ email: p.email, fullName: p.full_name || '', employeeCode: p.employee_code || '' });
+    setEditingProfileId(p.id);
+    setEditingSupervisor(null);
+  };
+
+  const editSupervisor = (s: any) => {
+    setNewSupervisor({ email: s.email, fullName: s.full_name || '', employeeCode: s.employee_code || '' });
+    setEditingSupervisor(s.email);
+    setEditingProfileId(null);
   };
 
   const removeSupervisor = async (email: string) => {
     if (!confirm(`Revoke access for ${email}?`)) return;
     const { error } = await supabase.from('authorized_supervisors').delete().eq('email', email);
-    if (error) alert(error.message);
+    if (error) showError(error.message);
     else showSuccess('Supervisor access revoked.');
   };
 
   const saveMould = async () => {
     if (!newMould.id || !newMould.name) {
-      alert('Mould ID and Name are required.');
+      showError('Mould ID and Name are required.');
       return;
     }
     
@@ -193,7 +232,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
     }
 
     if (error) {
-      alert(`Failed to save mould: ${error.message}`);
+      showError(`Failed to save mould: ${error.message}`);
     } else {
       showSuccess(`Mould ${newMould.id} saved.`);
       setNewMould({ id: '', name: '', cavities: 4, cycleTime: 20 });
@@ -203,7 +242,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
 
   const saveProduct = async () => {
     if (!newProduct.name || !newProduct.mouldId || !newProduct.itemCode) {
-      alert('Product Name, Mould selection, and Item Code are required.');
+      showError('Product Name, Mould selection, and Item Code are required.');
       return;
     }
 
@@ -254,21 +293,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
       binQty: p.binQty,
       stdPackSize: p.stdPackSize
     });
-  };
-
-  const cancelEdit = () => {
-    setEditingProduct(null);
-    setEditingOperator(null);
-    setEditingMould(null);
-    setEditingMaterial(null);
-    setEditingSupervisor(null);
-    setEditingMachine(null);
-    setNewProduct({ name: '', mouldId: '', itemCode: '', batchIdentifier: '', binQty: 4000, stdPackSize: 1000 });
-    setNewOperator({ name: '', employeeId: '' });
-    setNewMould({ id: '', name: '', cavities: 4, cycleTime: 20 });
-    setNewMaterial({ id: '', name: '', vendor: '' });
-    setNewSupervisor({ email: '', fullName: '' });
-    setNewMachine({ id: '', name: '', model: '' });
   };
 
   const saveMachine = async () => {
@@ -397,6 +421,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
           boxShadow: '0 4px 12px rgba(0,0,0,0.2)', animation: 'slide-in 0.3s ease-out'
         }}>
           {successMsg}
+        </div>
+      )}
+
+      {errorMsg && (
+        <div style={{
+          position: 'fixed', top: '24px', right: '24px', zIndex: 1000,
+          background: 'var(--red-bg)', color: 'var(--red)', 
+          padding: '12px 20px', borderRadius: '8px', border: '1px solid var(--red-dim)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)', animation: 'slide-in 0.3s ease-out'
+        }}>
+          {errorMsg}
         </div>
       )}
 
@@ -672,18 +707,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
           <div className="card" style={{ marginBottom: '16px' }}>
             <div className="ch">
               <span className="ct2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Plus size={14} /> Authorize New User
+                <Plus size={14} /> {editingProfileId ? 'Edit Profile' : (editingSupervisor ? 'Edit Whitelist Entry' : 'Authorize New User')}
               </span>
             </div>
             <div className="cb">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '8px' }}>
-                <input className="fi" placeholder="Email Address" disabled={!!editingSupervisor} value={newSupervisor.email} onChange={e => setNewSupervisor({ ...newSupervisor, email: e.target.value })} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto auto', gap: '8px' }}>
+                <input className="fi" placeholder="Email Address" disabled={!!editingSupervisor || !!editingProfileId} title={editingProfileId ? "Email cannot be changed" : ""} value={newSupervisor.email} onChange={e => setNewSupervisor({ ...newSupervisor, email: e.target.value })} />
                 <input className="fi" placeholder="Full Name" value={newSupervisor.fullName} onChange={e => setNewSupervisor({ ...newSupervisor, fullName: e.target.value })} />
-                <button className={`btn ${editingSupervisor ? 'bwrn' : 'bpri'}`} onClick={saveSupervisor}>
-                  {editingSupervisor ? <RefreshCcw size={16} /> : <Plus size={16} />} 
-                  <span style={{ marginLeft: '6px' }}>{editingSupervisor ? 'Update' : 'Authorize User'}</span>
+                <input className="fi" placeholder="Employee Code" value={newSupervisor.employeeCode} onChange={e => setNewSupervisor({ ...newSupervisor, employeeCode: e.target.value })} />
+                <button className={`btn ${(editingSupervisor || editingProfileId) ? 'bwrn' : 'bpri'}`} onClick={saveSupervisor}>
+                  {(editingSupervisor || editingProfileId) ? <RefreshCcw size={16} /> : <Plus size={16} />} 
+                  <span style={{ marginLeft: '6px' }}>{(editingSupervisor || editingProfileId) ? 'Update' : 'Authorize User'}</span>
                 </button>
-                {editingSupervisor && <button className="btn bsec" onClick={cancelEdit}><X size={16} /></button>}
+                {(editingSupervisor || editingProfileId) && <button className="btn bsec" onClick={cancelEdit}><X size={16} /></button>}
               </div>
             </div>
           </div>
@@ -705,17 +741,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
                     <tbody>
                       {profiles.map(p => (
                         <tr key={p.id}>
-                          <td style={{ fontWeight: 600 }}>{p.full_name || 'No Name'}</td>
+                          <td style={{ fontWeight: 600 }}>{p.full_name || 'No Name'} <span style={{fontSize:'10px', color:'var(--text3)'}}>{p.employee_code && `(${p.employee_code})`}</span></td>
                           <td className="mono" style={{ color: 'var(--text2)' }}>{p.email}</td>
                           <td>
                             <span className={`pill ${p.role === 'Admin' ? 'pg' : p.role === 'PowerUser' ? 'pp' : 'pd'}`}>
                               {p.role || 'Supervisor'}
                             </span>
                           </td>
-                          <td>
+                          <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button className="btn bpri" style={{ height: '28px', padding: '0 8px', fontSize: '10px' }} onClick={() => editProfile(p)}>Edit</button>
                             <select 
                               className="fi" 
-                              style={{ height: '28px', padding: '0 8px', fontSize: '12px' }}
+                              style={{ height: '28px', padding: '0 8px', fontSize: '11px', flex: 1 }}
                               value={p.role || 'Supervisor'}
                               onChange={(e) => updateUserRole(p.id, e.target.value)}
                             >
@@ -739,10 +776,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
                       <tbody>
                         {supervisors.map(s => (
                           <tr key={s.email}>
-                            <td className="mono" style={{ fontSize: '11px' }}>{s.email}</td>
+                            <td className="mono" style={{ fontSize: '11px' }}>{s.email} {s.employee_code && <span style={{color:'var(--purple)'}}>[{s.employee_code}]</span>}</td>
                             <td>
                               <div style={{ display: 'flex', gap: '4px' }}>
-                                <button className="btn bsm" onClick={() => { setEditingSupervisor(s.email); setNewSupervisor({ email: s.email, fullName: s.full_name }); }}><Edit2 size={12} /></button>
+                                <button className="btn bsm" onClick={() => { setEditingSupervisor(s.email); setNewSupervisor({ email: s.email, fullName: s.full_name, employeeCode: s.employee_code || '' }); }}><Edit2 size={12} /></button>
                                 <button className="btn bsm" style={{ color: 'var(--red)' }} onClick={() => removeSupervisor(s.email)}><Trash2 size={12} /></button>
                               </div>
                             </td>
