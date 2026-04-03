@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ArrowRight, 
-  Package, Hash, Layers, CheckCircle2
+  ArrowRight, Package, Hash, Layers, CheckCircle2, Camera, X, RefreshCw
 } from 'lucide-react';
+import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import type { Machine, Product, Crate, BatchRecord } from '../types';
 
 interface InspectionPageProps {
@@ -24,9 +24,24 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   const [filterDate, setFilterDate] = useState('');
   const [filterBatch, setFilterBatch] = useState('');
   const [filterProduct, setFilterProduct] = useState('');
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [activeCamera, setActiveCamera] = useState<string | null>(null);
 
-  const handleScan = async () => {
-    alert('Browser-based camera scanning is being updated. Please type the Unit ID manually in the input field below.');
+  const handleScan = () => {
+    setIsScannerOpen(true);
+  };
+
+  const onScanSuccess = (decodedText: string) => {
+    console.log('Scanned:', decodedText);
+    const match = pendingCrates.find(c => c.id.toLowerCase() === decodedText.toLowerCase());
+    if (match) {
+      onStartInspection({ id: match.id, netQty: match.netQty, machineId: match.machineId });
+      setIsScannerOpen(false);
+    } else {
+      // Just filter if not an exact match but exists in some form? 
+      // User said "Fast running", so let's let them know if it's not found or just filter
+      setFilterBatch(decodedText);
+    }
   };
 
   const filteredCrates = pendingCrates.filter(crate => {
@@ -218,8 +233,89 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
           color: var(--text);
         }
       `}</style>
+      {/* Scanner Overlay */}
+      {isScannerOpen && (
+        <div className="ov animate-fade-in" style={{ zIndex: 1000, background: 'rgba(0,0,0,0.9)' }}>
+          <div className="modal animate-scale-in" style={{ maxWidth: '400px', width: '100%', position: 'relative', overflow: 'hidden' }}>
+            <div className="mhd">
+              <div className="mtit" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Camera size={18} className="green" /> Barcode/QR Scanner
+              </div>
+              <button 
+                onClick={() => setIsScannerOpen(false)} 
+                className="mcl"
+                style={{ background: 'var(--bg3)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mbd" style={{ padding: '0' }}>
+              <div id="reader" style={{ width: '100%', minHeight: '300px', background: '#000' }}></div>
+              <div style={{ padding: '16px', textAlign: 'center', background: 'var(--bg2)', borderTop: '1px solid var(--border)' }}>
+                 <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '8px' }}>
+                    Position the barcode within the viewfinder
+                 </p>
+                 <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                   <button className="btn bsec bsm" onClick={() => setIsScannerOpen(false)}>Cancel</button>
+                 </div>
+              </div>
+            </div>
+          </div>
+
+          <ScannerLogic 
+             onSuccess={onScanSuccess} 
+             onClose={() => setIsScannerOpen(false)} 
+          />
+        </div>
+      )}
     </div>
   );
+};
+
+// Internal Helper for Scanner Lifecycle
+const ScannerLogic = ({ onSuccess, onClose }: { onSuccess: (text: string) => void, onClose: () => void }) => {
+    React.useEffect(() => {
+        const scanner = new Html5Qrcode("reader");
+        
+        const start = async () => {
+            try {
+                const cameras = await Html5Qrcode.getCameras();
+                if (cameras && cameras.length > 0) {
+                    // Always try to find the back camera first
+                    const backCam = cameras.find(c => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('rear'));
+                    const cameraId = backCam ? backCam.id : cameras[cameras.length - 1].id;
+                    
+                    await scanner.start(
+                        cameraId, 
+                        {
+                            fps: 15,
+                            qrbox: { width: 250, height: 250 },
+                            aspectRatio: 1.0,
+                            // videoConstraints: { facingMode: { exact: "environment" } } // Force environment camera
+                        },
+                        (decodedText) => {
+                            onSuccess(decodedText);
+                        },
+                        () => { /* Ignore verbose errors */ }
+                    );
+                }
+            } catch (err) {
+                console.error("Scanner Error:", err);
+                alert("Camera Access Error: " + err);
+                onClose();
+            }
+        };
+
+        start();
+
+        return () => {
+            if (scanner.isScanning) {
+                scanner.stop().catch(e => console.warn("Stop Error:", e));
+            }
+        };
+    }, []);
+
+    return null;
 };
 
 export default InspectionPage;

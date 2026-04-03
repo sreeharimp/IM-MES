@@ -708,7 +708,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
                           <td style={{ fontWeight: 600 }}>{p.full_name || 'No Name'}</td>
                           <td className="mono" style={{ color: 'var(--text2)' }}>{p.email}</td>
                           <td>
-                            <span className={`pill ${p.role === 'Admin' ? 'pg' : 'pd'}`}>
+                            <span className={`pill ${p.role === 'Admin' ? 'pg' : p.role === 'PowerUser' ? 'pp' : 'pd'}`}>
                               {p.role || 'Supervisor'}
                             </span>
                           </td>

@@ -151,7 +151,7 @@ const App: React.FC = () => {
             if (sv < ev) { if (ct >= sv && ct < ev) detected = s.id; } 
             else { if (ct >= sv || ct < ev) detected = s.id; }
           }
-          if (appData.current_shift !== detected && !appData.pending_handover && pData?.role !== 'Admin') {
+          if (appData.current_shift !== detected && !appData.pending_handover && pData?.role !== 'Admin' && pData?.role !== 'PowerUser') {
             setAppSettings(prev => prev ? { ...prev, pendingHandover: true } : null);
           }
         }
@@ -449,7 +449,7 @@ const App: React.FC = () => {
   if (!profile) return <div className="loading">Initializing...</div>;
 
   // Handover Flow (Supervisors Only)
-  if (appSettings?.pendingHandover && profile.role !== 'Admin') {
+  if (appSettings?.pendingHandover && profile.role !== 'Admin' && profile.role !== 'PowerUser') {
     if (profile.email.toLowerCase() === appSettings.lastHandoverSummary?.outgoing_supervisor_email?.toLowerCase()) {
       return (
         <div className="loading" style={{flexDirection:'column', gap:'20px'}}>
@@ -474,7 +474,7 @@ const App: React.FC = () => {
   }
 
   // Initial Onboarding Step (Operator Assignment - Supervisors Only)
-  if (isInitialAssignmentOpen && profile.role !== 'Admin') {
+  if (isInitialAssignmentOpen && profile.role !== 'Admin' && profile.role !== 'PowerUser') {
     return (
       <div style={{ height: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <ForceOperatorAssignmentModal 
@@ -506,7 +506,7 @@ const App: React.FC = () => {
         <div className="sl" style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', minHeight: '64px' }}>
           {!isSidebarCollapsed && (
             <div style={{ flex: 1 }}>
-              <div className="sl-t">IMM CORE</div>
+              <div className="sl-t">IM-MES</div>
               <div className="sl-s">Execution System</div>
             </div>
           )}
@@ -559,7 +559,7 @@ const App: React.FC = () => {
           </div>
 
           <div style={{ textAlign: 'right' }}>
-            <button className="btn bdan bsm" onClick={profile.role === 'Admin' ? () => supabase.auth.signOut() : ()=>setIsHandoverSummaryOpen(true)}>
+            <button className="btn bdan bsm" onClick={(profile.role === 'Admin' || profile.role === 'PowerUser') ? () => supabase.auth.signOut() : ()=>setIsHandoverSummaryOpen(true)}>
               <LogOut size={16}/> Sign Out
             </button>
           </div>

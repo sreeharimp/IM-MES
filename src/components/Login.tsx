@@ -55,21 +55,27 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
   return (
     <div className="login-overlay">
-      <div className="login-card animate-fade-in">
-        <div className="login-header">
-          <div className="login-logo">
-            <ShieldCheck size={32} color="var(--brand)" />
+      <div className="login-container animate-fade-in">
+        <div className="login-brand">
+          <div className="login-logo-large">
+            <ShieldCheck size={48} color="var(--green)" />
           </div>
-          <h1>Production Console</h1>
-          <p>{isSignUp ? 'New Supervisor Registration' : 'Supervisor Authentication Required'}</p>
+          <h2>IM-MES</h2>
+          <p>Next-Gen Industrial Execution</p>
         </div>
+        
+        <div className="login-card">
+          <div className="login-header">
+            <h1>System Authentication</h1>
+            <p>{isSignUp ? 'New User Registration' : 'Secure Login Required'}</p>
+          </div>
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="input-group">
             <Mail size={18} className="input-icon" />
             <input 
               type="email" 
-              placeholder="Supervisor Email" 
+              placeholder="System Email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -129,11 +135,12 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
         </div>
         </form>
 
-        <div className="login-footer">
-          <p>© 2026 Cyberpunk Industrial MES</p>
-          <p style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '4px' }}>
-            System ID: {window.location.hostname}
-          </p>
+          <div className="login-footer">
+            <p>© 2026 IM-MES Industrial Systems</p>
+            <p style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '4px' }}>
+              System Node: {window.location.hostname}
+            </p>
+          </div>
         </div>
       </div>
     </div>
