@@ -194,11 +194,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
     setEditingSupervisor(null);
   };
 
-  const editSupervisor = (s: any) => {
-    setNewSupervisor({ email: s.email, fullName: s.full_name || '', employeeCode: s.employee_code || '' });
-    setEditingSupervisor(s.email);
-    setEditingProfileId(null);
-  };
+
 
   const removeSupervisor = async (email: string) => {
     if (!confirm(`Revoke access for ${email}?`)) return;

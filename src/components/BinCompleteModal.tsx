@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle, Printer } from 'lucide-react';
+import { X, Printer } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Machine } from '../types';
 

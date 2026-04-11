@@ -1249,7 +1249,7 @@ button, input, select, textarea {
   padding: 32px;
 }
 
-@media (min-width: 800px) or (orientation: landscape) and (max-height: 600px) {
+@media (min-width: 800px), (orientation: landscape) and (max-height: 600px) {
   .login-container {
     width: 720px;
     max-width: 95vw;
