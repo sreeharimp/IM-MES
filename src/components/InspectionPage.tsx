@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { 
-  ArrowRight, Package, Hash, Layers, CheckCircle2, Camera, X
+  ArrowRight, Package, Hash, Layers, CheckCircle2, Camera, X, Printer
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
-import type { Machine, Product, Crate, BatchRecord } from '../types';
+import { QRCodeSVG } from 'qrcode.react';
+import type { Machine, Product, Crate, BatchRecord, Operator } from '../types';
 
 interface InspectionPageProps {
   pendingCrates: Crate[];
   machines: Machine[];
   products: Product[];
   batchRecords: BatchRecord[];
+  operators: Operator[];
   onStartInspection: (crate: { id: string, netQty: number, machineId: string }) => void;
 }
 
@@ -18,6 +20,7 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   machines, 
   products,
   batchRecords,
+  operators,
   onStartInspection 
 }) => {
   const [filterMachineId, setFilterMachineId] = useState('');
@@ -25,6 +28,15 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   const [filterBatch, setFilterBatch] = useState('');
   const [filterProduct, setFilterProduct] = useState('');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [reprintCrate, setReprintCrate] = useState<Crate | null>(null);
+
+  const handleReprint = (crate: Crate) => {
+    setReprintCrate(crate);
+    setTimeout(() => {
+      window.print();
+      setReprintCrate(null);
+    }, 500);
+  };
 
   const handleScan = () => {
     setIsScannerOpen(true);
@@ -153,9 +165,14 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
               background: 'var(--bg2)'
             }}>
               {/* Product Badge Area - Main Header */}
-              <div style={{ padding: '12px 16px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', display:'flex', alignItems:'center', gap:'8px' }}>
-                 <Package size={14} style={{color:'var(--purple)'}} />
-                 <span style={{ fontSize: '13px', fontWeight: 600 }}>{batchRecords.find(b => b.id === crate.batchId)?.productName || 'QC Audit'}</span>
+              <div style={{ padding: '12px 16px', background: 'var(--bg3)', borderBottom: '1px solid var(--border)', display:'flex', alignItems:'center', justifyContent: 'space-between', gap:'8px' }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                   <Package size={14} style={{color:'var(--purple)'}} />
+                   <span style={{ fontSize: '13px', fontWeight: 600 }}>{batchRecords.find(b => b.id === crate.batchId)?.productName || 'QC Audit'}</span>
+                 </div>
+                 <button className="btn bsm bsec" style={{ padding: '4px 8px', fontSize: '10px' }} onClick={() => handleReprint(crate)}>
+                   <Printer size={12} /> Reprint
+                 </button>
               </div>
 
               {/* Card Body */}
@@ -279,6 +296,87 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
              onSuccess={onScanSuccess} 
              onClose={() => setIsScannerOpen(false)} 
           />
+        </div>
+      )}
+
+      {/* Auto-closing Reprint Overlay */}
+      {reprintCrate && (
+        <div className="ov animate-fade-in" style={{ zIndex: 1000, background: 'rgba(0,0,0,0.8)' }}>
+           <div className="modal animate-scale-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ color: 'var(--text)', marginBottom: '20px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Printer size={18} /> Preparing Slip Print...
+              </div>
+              <div 
+                id="print-slip" 
+                style={{ 
+                  background: '#fff', 
+                  color: '#000', 
+                  padding: '16px', 
+                  borderRadius: '4px',
+                  width: '100%',
+                  maxWidth: '280px',
+                  fontFamily: 'var(--mono)',
+                  fontSize: '12px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                }}
+              >
+                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14px', borderBottom: '1px solid #000', paddingBottom: '6px', marginBottom: '10px' }}>
+                  PRODUCTION SLIP (REPRINT)
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Date/Time:</span>
+                  <span>{new Date(reprintCrate.endTime).toLocaleDateString()} {new Date(reprintCrate.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Shift:</span>
+                  <span>{reprintCrate.shiftId || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Operator:</span>
+                  <span>
+                    {operators.find(o => o.id === reprintCrate.operatorId)?.name || 'UNASSIGNED'} 
+                    {operators.find(o => o.id === reprintCrate.operatorId)?.employeeId && ` (${operators.find(o => o.id === reprintCrate.operatorId)?.employeeId})`}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Machine ID:</span>
+                  <span>{reprintCrate.machineId}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span>Batch / Bin:</span>
+                  <span style={{ fontWeight: 'bold' }}>{reprintCrate.batchId} / #{reprintCrate.binNumber}</span>
+                </div>
+                
+                <div style={{ borderBottom: '1px dashed #000', margin: '8px 0' }}></div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Gross Qty:</span>
+                  <span>{reprintCrate.grossQty}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Startup Scrap:</span>
+                  <span>{reprintCrate.startupScrap}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>QC Samples:</span>
+                  <span>{reprintCrate.qcSample}</span>
+                </div>
+                
+                <div style={{ borderBottom: '1px dashed #000', margin: '8px 0' }}></div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold', marginTop: '8px' }}>
+                  <span>NET QTY:</span>
+                  <span>{reprintCrate.netQty}</span>
+                </div>
+                
+                <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                  <div style={{ fontSize: '10px', marginBottom: '6px', fontWeight: 'bold' }}>UNIT ID: {reprintCrate.id}</div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <QRCodeSVG value={reprintCrate.id} size={90} level="M" />
+                  </div>
+                </div>
+              </div>
+           </div>
         </div>
       )}
     </div>

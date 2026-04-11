@@ -1420,3 +1420,29 @@ button, input, select, textarea {
   background: var(--bg4);
   color: var(--text);
 }
+
+/* Print styles for thermal printer */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-slip, #print-slip * {
+    visibility: visible;
+  }
+  #print-slip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm; /* Typically 80mm or 58mm for thermal printers */
+    margin: 0;
+    padding: 10px;
+    background: white !important;
+    color: black !important;
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  #print-slip div, #print-slip span, #print-slip strong {
+    color: black !important;
+  }
+}

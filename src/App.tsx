@@ -243,6 +243,17 @@ const App: React.FC = () => {
             activeSupervisorName: a.active_supervisor_name
           });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'operators' }, (p) => {
+          if (p.eventType === 'DELETE') {
+            setOperators(prev => prev.filter(o => o.id !== p.old.id));
+          } else if (p.eventType === 'INSERT') {
+            const o = p.new as any;
+            setOperators(prev => [...prev, { id: o.id, name: o.name, employeeId: o.employee_id, isCertified: o.is_certified }]);
+          } else if (p.eventType === 'UPDATE') {
+            const o = p.new as any;
+            setOperators(prev => prev.map(op => op.id === o.id ? { id: o.id, name: o.name, employeeId: o.employee_id, isCertified: o.is_certified } : op));
+          }
+      })
       .subscribe();
 
     const profileSubscription = supabase.channel(`profile_${session.user.id}`)
@@ -487,7 +498,7 @@ const App: React.FC = () => {
             </div>
           </div>
         );
-      case 'Inspections': return <InspectionPage pendingCrates={pendingCrates} machines={machines} products={products} batchRecords={batchRecords} onStartInspection={setInspectingBin} />;
+      case 'Inspections': return <InspectionPage pendingCrates={pendingCrates} machines={machines} products={products} batchRecords={batchRecords} operators={operators} onStartInspection={setInspectingBin} />;
       case 'Batch Log': return <BatchLogPage batchRecords={batchRecords} products={products} pendingCrates={pendingCrates} />;
       case 'Machines': 
         if (profile?.role !== 'Admin' && profile?.role !== 'PowerUser') {
@@ -788,7 +799,15 @@ const App: React.FC = () => {
             alert(`Handover failed! Your summary was not saved: ${err.message}`);
           }
       }} />}
-      {selectedMachineId && <BinCompleteModal machine={machines.find(m=>m.id===selectedMachineId)!} binNumber={machines.find(m=>m.id===selectedMachineId)!.currentBinNumber} onClose={()=>{setSelectedMachineId(null); setPendingBreakdownMachineId(null);}} onConfirm={handleBinComplete} />}
+      {selectedMachineId && <BinCompleteModal 
+        machine={machines.find(m=>m.id===selectedMachineId)!} 
+        binNumber={machines.find(m=>m.id===selectedMachineId)!.currentBinNumber} 
+        operatorName={operators.find(o=>o.id===machines.find(m=>m.id===selectedMachineId)!.currentOperatorId)?.name || 'Unknown Operator'}
+        operatorCode={operators.find(o=>o.id===machines.find(m=>m.id===selectedMachineId)!.currentOperatorId)?.employeeId || 'N/A'}
+        shift={appSettings?.currentShift || 'A'}
+        onClose={()=>{setSelectedMachineId(null); setPendingBreakdownMachineId(null);}} 
+        onConfirm={handleBinComplete} 
+      />}
       {inspectingBin && <InspectionModal binId={inspectingBin.id} netQty={inspectingBin.netQty} onClose={()=>setInspectingBin(null)} onConfirm={async (data)=>{
           const rejDetails = data.rejections.reduce((acc: any, r: any) => { if (r.count > 0) acc[r.category] = r.count; return acc; }, {});
           const rejQty = data.rejections.reduce((sum: number, r: any) => sum + r.count, 0);
