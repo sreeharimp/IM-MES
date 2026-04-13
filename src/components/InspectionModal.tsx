@@ -1,21 +1,29 @@
 import React, { useState } from 'react';
-import { X, CheckCircle, AlertTriangle, Clipboard } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, Clipboard, User } from 'lucide-react';
+import type { DefectType, Operator } from '../types';
 
 interface InspectionModalProps {
   binId: string;
   netQty: number;
+  defectTypes: DefectType[];
+  operators: Operator[];
   onClose: () => void;
   onConfirm: (data: any) => void;
 }
 
-const InspectionModal: React.FC<InspectionModalProps> = ({ binId, netQty, onClose, onConfirm }) => {
-  const [rejections, setRejections] = useState([
-    { category: 'Flash / Burrs', count: 0 },
-    { category: 'Short Shot', count: 0 },
-    { category: 'Burn Marks', count: 0 },
-    { category: 'Silver Streaks', count: 0 },
-    { category: 'Dimensional Out', count: 0 },
-  ]);
+const InspectionModal: React.FC<InspectionModalProps> = ({ binId, netQty, defectTypes, operators, onClose, onConfirm }) => {
+  const [rejections, setRejections] = useState(
+    defectTypes.length > 0 
+      ? defectTypes.map(d => ({ category: d.name, count: 0 }))
+      : [
+          { category: 'Flash / Burrs', count: 0 },
+          { category: 'Short Shot', count: 0 },
+          { category: 'Burn Marks', count: 0 },
+          { category: 'Silver Streaks', count: 0 },
+          { category: 'Dimensional Out', count: 0 },
+        ]
+  );
+  const [inspectorId, setInspectorId] = useState('');
 
   const totalRejected = rejections.reduce((sum, r) => sum + r.count, 0);
   const goodQty = netQty - totalRejected;
@@ -62,6 +70,25 @@ const InspectionModal: React.FC<InspectionModalProps> = ({ binId, netQty, onClos
 
         {/* Responsive Content Area */}
         <div className="modal-body" style={{ padding: '24px 32px' }}>
+          {/* Inspector Selection */}
+          <div style={{ marginBottom: '24px', padding: '16px', background: 'var(--bg2)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+             <label className="fl" style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={14} /> INSPECTED BY (EMPLOYEE)
+             </label>
+             <select 
+               className="fi" 
+               style={{ background: 'var(--bg)', borderColor: !inspectorId ? 'var(--amber-dim)' : 'var(--border)' }}
+               value={inspectorId}
+               onChange={(e) => setInspectorId(e.target.value)}
+             >
+               <option value="">Select Inspector...</option>
+               {operators.map(o => (
+                 <option key={o.id} value={o.id}>{o.name} ({o.employeeId})</option>
+               ))}
+             </select>
+             {!inspectorId && <p style={{ fontSize: '10px', color: 'var(--amber)', marginTop: '4px' }}>* Required to complete inspection</p>}
+          </div>
+
           <div className="inspection-grid">
             
             {/* Left Column: Defect Categories */}
@@ -121,8 +148,8 @@ const InspectionModal: React.FC<InspectionModalProps> = ({ binId, netQty, onClos
                 <button 
                   className="btn btn-primary" 
                   style={{ flex: 2, padding: '14px 24px' }}
-                  disabled={goodQty < 0}
-                  onClick={() => onConfirm({ rejections, goodQty })}
+                  disabled={goodQty < 0 || !inspectorId}
+                  onClick={() => onConfirm({ rejections, goodQty, inspectorId })}
                 >
                   <CheckCircle size={18} /> Confirm & Seal Crate
                 </button>

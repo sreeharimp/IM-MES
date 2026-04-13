@@ -190,3 +190,18 @@ export interface ActivityLog {
   details: string;
   qty?: number;
 }
+
+export interface DefectType {
+  id: string;
+  name: string;
+}
+
+export interface BreakdownReason {
+  id: string;
+  name: string;
+}
+
+export interface CleaningTask {
+  id: string;
+  label: string;
+}

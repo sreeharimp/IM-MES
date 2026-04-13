@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Users, Box, Layers, Database, Cpu, RefreshCcw, Edit2, X, ShieldCheck, Clock } from 'lucide-react';
-import type { Machine, Operator, Mould, Product, RawMaterial, ProductMaterial, ShiftSetting } from '../types';
+import { Plus, Trash2, Users, Box, Layers, Database, Cpu, RefreshCcw, Edit2, X, ShieldCheck, Clock, AlertTriangle, Wrench } from 'lucide-react';
+import type { Machine, Operator, Mould, Product, RawMaterial, ProductMaterial, ShiftSetting, DefectType, BreakdownReason, CleaningTask } from '../types';
 import { supabase } from '../lib/supabase';
 
 interface AdminDashboardProps {
@@ -12,6 +12,9 @@ interface AdminDashboardProps {
   productMaterials: ProductMaterial[];
   supervisors: { email: string, full_name: string, employee_code?: string }[];
   shiftSettings: ShiftSetting[];
+  defectTypes: DefectType[];
+  breakdownReasons: BreakdownReason[];
+  cleaningTasks: CleaningTask[];
   currentUserRole: string;
 }
 
@@ -49,8 +52,10 @@ const ShiftRow = ({ s, updateShiftTiming }: { s: ShiftSetting, updateShiftTiming
   );
 };
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, moulds, products, rawMaterials, productMaterials, supervisors, shiftSettings, currentUserRole }) => {
-  const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users'>('machines');
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
+  machines, operators, moulds, products, rawMaterials, productMaterials, supervisors, shiftSettings, defectTypes, breakdownReasons, cleaningTasks, currentUserRole 
+}) => {
+  const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users' | 'defects' | 'breakdowns' | 'checklist'>('machines');
   const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string }[]>([]);
   const [newSupervisor, setNewSupervisor] = useState({ email: '', fullName: '', employeeCode: '' });
   const [newOperator, setNewOperator] = useState({ name: '', employeeId: '' });
@@ -58,6 +63,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
   const [newProduct, setNewProduct] = useState({ name: '', mouldId: '', itemCode: '', batchIdentifier: '', binQty: 4000, stdPackSize: 1000 });
   const [newMaterial, setNewMaterial] = useState({ id: '', name: '', vendor: '' });
   const [newMachine, setNewMachine] = useState({ id: '', name: '', model: '' });
+  const [newDefect, setNewDefect] = useState('');
+  const [newReason, setNewReason] = useState('');
+  const [newTask, setNewTask] = useState('');
 
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [editingOperator, setEditingOperator] = useState<string | null>(null);
@@ -66,6 +74,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
   const [editingSupervisor, setEditingSupervisor] = useState<string | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editingMachine, setEditingMachine] = useState<string | null>(null);
+  const [editingDefectId, setEditingDefectId] = useState<string | null>(null);
+  const [editingDefectName, setEditingDefectName] = useState('');
+  const [editingReasonId, setEditingReasonId] = useState<string | null>(null);
+  const [editingReasonName, setEditingReasonName] = useState('');
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTaskLabel, setEditingTaskLabel] = useState('');
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -447,6 +461,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
             <TabButton id="users" label="User Management" icon={ShieldCheck} />
           )}
           <TabButton id="shifts" label="Shift Setup" icon={Clock} />
+          <TabButton id="defects" label="Defects" icon={AlertTriangle} />
+          <TabButton id="breakdowns" label="Breakdown Reasons" icon={Wrench} />
+          <TabButton id="checklist" label="Startup Checklist" icon={ShieldCheck} />
         </div>
         <button className="btn bsm" onClick={refreshSchema} title="Force Schema Refresh">
           <RefreshCcw size={14} />
@@ -817,6 +834,289 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ machines, operators, mo
               </thead>
               <tbody>
                 {shiftSettings.map(s => <ShiftRow key={s.id} s={s} updateShiftTiming={updateShiftTiming} />)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'defects' && (
+        <div className="card animate-scale-in">
+          <div className="ch">
+            <span className="ct2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertTriangle size={14} /> Defect Type Registry
+            </span>
+          </div>
+          <div className="cb">
+             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input 
+                className="fi" 
+                placeholder="New Defect Name (e.g. Flash)" 
+                value={newDefect} 
+                onChange={e => setNewDefect(e.target.value)} 
+              />
+              <button 
+                className="btn bpri" 
+                onClick={async () => {
+                  if (!newDefect) return;
+                  const { error } = await supabase.from('defect_types').insert({ id: `D${Date.now()}`, name: newDefect });
+                  if (error) showError(error.message);
+                  else {
+                    showSuccess(`Defect type ${newDefect} added.`);
+                    setNewDefect('');
+                  }
+                }}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            <table className="dt">
+              <thead>
+                <tr><th>Defect Name</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {defectTypes.map(d => (
+                  <tr key={d.id}>
+                    <td>
+                      {editingDefectId === d.id ? (
+                        <input 
+                          className="fi bsm" 
+                          value={editingDefectName} 
+                          onChange={e => setEditingDefectName(e.target.value)} 
+                          autoFocus
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 500 }}>{d.name}</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {editingDefectId === d.id ? (
+                          <>
+                            <button 
+                              className="btn bsm bpri" 
+                              onClick={async () => {
+                                const { error } = await supabase.from('defect_types').update({ name: editingDefectName }).eq('id', d.id);
+                                if (error) showError(error.message);
+                                else {
+                                  showSuccess('Defect updated');
+                                  setEditingDefectId(null);
+                                }
+                              }}
+                            >
+                              Save
+                            </button>
+                            <button className="btn bsm bsec" onClick={() => setEditingDefectId(null)}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button 
+                              className="btn bsm" 
+                              style={{ color: 'var(--blue)' }} 
+                              onClick={() => {
+                                setEditingDefectId(d.id);
+                                setEditingDefectName(d.name);
+                              }}
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            <button 
+                              className="btn bsm" 
+                              style={{ color: 'var(--red)' }} 
+                              onClick={async () => {
+                                if (!confirm(`Delete defect type "${d.name}"?`)) return;
+                                const { error } = await supabase.from('defect_types').delete().eq('id', d.id);
+                                if (error) showError(error.message);
+                                else showSuccess(`Defect type deleted.`);
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'breakdowns' && (
+        <div className="card animate-scale-in">
+          <div className="ch">
+            <span className="ct2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Wrench size={14} /> Breakdown Reason Registry
+            </span>
+          </div>
+          <div className="cb">
+             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input 
+                className="fi" 
+                placeholder="New Reason (e.g. Hydraulic Leak)" 
+                value={newReason} 
+                onChange={e => setNewReason(e.target.value)} 
+              />
+              <button 
+                className="btn bpri" 
+                onClick={async () => {
+                  if (!newReason) return;
+                  const { error } = await supabase.from('breakdown_reasons').insert({ id: `B${Date.now()}`, name: newReason });
+                  if (error) showError(error.message);
+                  else {
+                    showSuccess(`Reason "${newReason}" added.`);
+                    setNewReason('');
+                  }
+                }}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            <table className="dt">
+              <thead>
+                <tr><th>Reason Name</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {breakdownReasons.map(r => (
+                  <tr key={r.id}>
+                    <td>
+                      {editingReasonId === r.id ? (
+                        <input 
+                          className="fi bsm" 
+                          value={editingReasonName} 
+                          onChange={e => setEditingReasonName(e.target.value)} 
+                          autoFocus
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 500 }}>{r.name}</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {editingReasonId === r.id ? (
+                          <>
+                            <button 
+                              className="btn bsm bpri" 
+                              onClick={async () => {
+                                const { error } = await supabase.from('breakdown_reasons').update({ name: editingReasonName }).eq('id', r.id);
+                                if (error) showError(error.message);
+                                else {
+                                  showSuccess('Reason updated');
+                                  setEditingReasonId(null);
+                                }
+                              }}
+                            >
+                              Save
+                            </button>
+                            <button className="btn bsm bsec" onClick={() => setEditingReasonId(null)}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button 
+                              className="btn bsm" 
+                              style={{ color: 'var(--blue)' }} 
+                              onClick={() => {
+                                setEditingReasonId(r.id);
+                                setEditingReasonName(r.name);
+                              }}
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            <button 
+                              className="btn bsm" 
+                              style={{ color: 'var(--red)' }} 
+                              onClick={async () => {
+                                if (!confirm(`Delete reason "${r.name}"?`)) return;
+                                const { error } = await supabase.from('breakdown_reasons').delete().eq('id', r.id);
+                                if (error) showError(error.message);
+                                else showSuccess(`Reason deleted.`);
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {activeTab === 'checklist' && (
+        <div className="card animate-scale-in">
+          <div className="ch">
+            <span className="ct2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldCheck size={14} /> Startup Checklist Registry
+            </span>
+          </div>
+          <div className="cb">
+             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input 
+                className="fi" 
+                placeholder="New Task (e.g. Check Oil Levels)" 
+                value={newTask} 
+                onChange={e => setNewTask(e.target.value)} 
+              />
+              <button 
+                className="btn bpri" 
+                onClick={async () => {
+                  if (!newTask) return;
+                  const { error } = await supabase.from('cleaning_tasks').insert({ id: `C${Date.now()}`, label: newTask });
+                  if (error) showError(error.message);
+                  else {
+                    showSuccess('Task added');
+                    setNewTask('');
+                  }
+                }}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            <table className="dt">
+              <thead>
+                <tr><th>Task Description</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {cleaningTasks.map(t => (
+                  <tr key={t.id}>
+                    <td>
+                      {editingTaskId === t.id ? (
+                        <input className="fi bsm" value={editingTaskLabel} onChange={e => setEditingTaskLabel(e.target.value)} autoFocus />
+                      ) : (
+                        <span style={{ fontWeight: 500 }}>{t.label}</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {editingTaskId === t.id ? (
+                          <>
+                            <button className="btn bsm bpri" onClick={async () => {
+                              const { error } = await supabase.from('cleaning_tasks').update({ label: editingTaskLabel }).eq('id', t.id);
+                              if (error) showError(error.message);
+                              else { showSuccess('Updated'); setEditingTaskId(null); }
+                            }}>Save</button>
+                            <button className="btn bsm bsec" onClick={() => setEditingTaskId(null)}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button className="btn bsm" style={{ color: 'var(--blue)' }} onClick={() => { setEditingTaskId(t.id); setEditingTaskLabel(t.label); }}><Edit2 size={12}/></button>
+                            <button className="btn bsm" style={{ color: 'var(--red)' }} onClick={async () => {
+                              if (!confirm(`Delete task "${t.label}"?`)) return;
+                              const { error } = await supabase.from('cleaning_tasks').delete().eq('id', t.id);
+                              if (error) showError(error.message);
+                              else showSuccess('Deleted');
+                            }}><Trash2 size={12}/></button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, ArrowRight, ChevronLeft, AlertCircle } from 'lucide-react';
-import type { Product, Machine, Mould, RawMaterial, ProductMaterial } from '../types';
+import { X, ArrowRight, ChevronLeft, AlertCircle, Check } from 'lucide-react';
+import type { Product, Machine, Mould, RawMaterial, ProductMaterial, CleaningTask } from '../types';
 
 interface JobSetupModalProps {
   machine: Machine;
@@ -9,6 +9,7 @@ interface JobSetupModalProps {
   moulds: Mould[];
   rawMaterials: RawMaterial[];
   productMaterials: ProductMaterial[];
+  cleaningTasks: CleaningTask[];
   onClose: () => void;
   onConfirm: (data: { 
     mouldId: string,
@@ -23,7 +24,7 @@ interface JobSetupModalProps {
 }
 
 const JobSetupModal: React.FC<JobSetupModalProps> = ({ 
-  machine, allMachines, products, moulds, rawMaterials, productMaterials, onClose, onConfirm, onAssignOperator 
+  machine, allMachines, products, moulds, rawMaterials, productMaterials, cleaningTasks, onClose, onConfirm, onAssignOperator 
 }) => {
   const [step, setStep] = useState(1);
   const [isMouldChanged, setIsMouldChanged] = useState<boolean | null>(null);
@@ -36,13 +37,7 @@ const JobSetupModal: React.FC<JobSetupModalProps> = ({
     binTarget: machine.binTarget || 4000
   });
 
-  const [checklist, setChecklist] = useState({
-    hopper: false,
-    barrel: false,
-    nozzle: false,
-    surfaces: false,
-    fai: false
-  });
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
 
 
 
@@ -209,33 +204,32 @@ const JobSetupModal: React.FC<JobSetupModalProps> = ({
           <div className="msec" style={{ borderTop: 'none', marginBottom: '12px' }}>Machine Hygiene Checklist</div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: 'var(--border)', borderRadius: 'var(--r)', overflow: 'hidden', marginBottom: '16px', border: '1px solid var(--border)' }}>
-            {[
-              { id: 'hopper', label: 'Hopper Cleaned & Inspected' },
-              { id: 'barrel', label: 'Barrel & Screw Purged' },
-              { id: 'nozzle', label: 'Nozzle Obstruction Check' },
-              { id: 'surfaces', label: 'Mould Platen Surfaces Cleaned' },
-              { id: 'fai', label: 'First Article Inspection (FAI) Done' }
-            ].map(item => (
+            {cleaningTasks.map(item => (
               <div 
                 key={item.id}
-                onClick={() => setChecklist({...checklist, [item.id]: !checklist[item.id as keyof typeof checklist]})}
+                onClick={() => setChecklist({...checklist, [item.id]: !checklist[item.id]})}
                 style={{ 
                   display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', cursor: 'pointer',
-                  background: checklist[item.id as keyof typeof checklist] ? 'var(--green-bg)' : 'var(--bg2)',
+                  background: checklist[item.id] ? 'var(--green-bg)' : 'var(--bg2)',
                   transition: 'background 0.15s'
                 }}
               >
                 <div style={{ 
                   width: '18px', height: '18px', borderRadius: '4px', border: '1px solid', 
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: checklist[item.id as keyof typeof checklist] ? 'var(--green)' : 'var(--bg3)',
-                  borderColor: checklist[item.id as keyof typeof checklist] ? 'var(--green)' : 'var(--border2)'
+                  background: checklist[item.id] ? 'var(--green)' : 'var(--bg3)',
+                  borderColor: checklist[item.id] ? 'var(--green)' : 'var(--border2)'
                 }}>
-                  {checklist[item.id as keyof typeof checklist] && <X size={14} color="var(--bg)" />}
+                  {checklist[item.id] && <Check size={14} color="var(--bg)" />}
                 </div>
-                <span style={{ fontSize: '13px', color: checklist[item.id as keyof typeof checklist] ? 'var(--text)' : 'var(--text2)' }}>{item.label}</span>
+                <span style={{ fontSize: '13px', color: checklist[item.id] ? 'var(--text)' : 'var(--text2)' }}>{item.label}</span>
               </div>
             ))}
+            {cleaningTasks.length === 0 && (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: '12px' }}>
+                No mandatory cleaning tasks defined.
+              </div>
+            )}
           </div>
 
           {!machine.currentOperatorId && (
@@ -258,7 +252,7 @@ const JobSetupModal: React.FC<JobSetupModalProps> = ({
           )}
 
           <button 
-            disabled={!Object.values(checklist).every(v => v) || !machine.currentOperatorId}
+            disabled={(cleaningTasks.length > 0 && !cleaningTasks.every(t => checklist[t.id])) || !machine.currentOperatorId}
             className="btn bpri bfull" 
             onClick={() => onConfirm({ ...setup, isMouldChanged: !!isMouldChanged })}
           >

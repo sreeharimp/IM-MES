@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   LogOut, Wrench, Factory, History, Cpu, Menu, 
   ChevronLeft, ScrollText, CheckCircle2, 
-  Play, UserPlus, ClipboardList, Square, AlertCircle
+  Play, UserPlus, ClipboardList, Square, AlertCircle, Info
 } from 'lucide-react';
 import './index.css';
-import type { Machine, MachineStatus, Operator, Product, Mould, RawMaterial, ProductMaterial, Crate, BatchRecord, ShiftSetting, AppSettings } from './types';
+import type { Machine, MachineStatus, Operator, Product, Mould, RawMaterial, ProductMaterial, Crate, BatchRecord, ShiftSetting, AppSettings, DefectType, BreakdownReason, CleaningTask } from './types';
 import { getBatchSummary } from './utils/batchUtils';
 import { supabase } from './lib/supabase';
 
@@ -24,8 +24,9 @@ import ShiftLogPage from './components/ShiftLogPage';
 import InspectionPage from './components/InspectionPage';
 import BreakdownLogPage from './components/BreakdownLogPage';
 import BatchLogPage from './components/BatchLogPage';
+import AboutPage from './components/AboutPage';
 
-type Tab = 'Shop Floor' | 'Inspections' | 'Batch Log' | 'Machines' | 'Shift Log' | 'Breakdowns';
+type Tab = 'Shop Floor' | 'Inspections' | 'Batch Log' | 'Machines' | 'Shift Log' | 'Breakdowns' | 'About';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -59,6 +60,9 @@ const App: React.FC = () => {
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [productMaterials, setProductMaterials] = useState<ProductMaterial[]>([]);
   const [batchRecords, setBatchRecords] = useState<BatchRecord[]>([]);
+  const [defectTypes, setDefectTypes] = useState<DefectType[]>([]);
+  const [breakdownReasons, setBreakdownReasons] = useState<BreakdownReason[]>([]);
+  const [cleaningTasks, setCleaningTasks] = useState<CleaningTask[]>([]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -79,7 +83,7 @@ const App: React.FC = () => {
     if (!session) return;
     const fetchData = async () => {
       try {
-        const [{data: appData}, {data: shiftData}, {data: machs}, {data: pData}, {data: prdData}, {data: opers}, {data: batRecs}, {data: mldData}, {data: rmData}, {data: pmData}, {data: crates}] = await Promise.all([
+        const [{data: appData}, {data: shiftData}, {data: machs}, {data: pData}, {data: prdData}, {data: opers}, {data: batRecs}, {data: mldData}, {data: rmData}, {data: pmData}, {data: crates}, {data: dTypes}, {data: bReasons}, {data: cTasks}] = await Promise.all([
           supabase.from('app_settings').select('*').eq('id', 'global').maybeSingle(),
           supabase.from('shift_settings').select('*').order('id'),
           supabase.from('machines').select('*').order('id'),
@@ -90,8 +94,13 @@ const App: React.FC = () => {
           supabase.from('moulds').select('*'),
           supabase.from('raw_materials').select('*'),
           supabase.from('approved_materials').select('*'),
-          supabase.from('crates').select('*').eq('status', 'Pending Inspection')
+          supabase.from('crates').select('*').eq('status', 'Pending Inspection'),
+          supabase.from('defect_types').select('*').order('name'),
+          supabase.from('breakdown_reasons').select('*').order('name'),
+          supabase.from('cleaning_tasks').select('*').order('label')
         ]);
+        if (cTasks) setCleaningTasks(cTasks);
+        if (bReasons) setBreakdownReasons(bReasons);
 
         if (appData) setAppSettings({ 
           id: appData.id, 
@@ -156,6 +165,7 @@ const App: React.FC = () => {
           startupScrap: c.startup_scrap, qcSample: c.qc_sample, netQty: c.net_qty, 
           operatorId: c.operator_id, supervisorId: c.supervisor_id, status: c.status 
         })));
+        if (dTypes) setDefectTypes(dTypes);
         if (appData && shiftData) {
           const ct = new Date().getHours() + new Date().getMinutes() / 60;
           let detected = shiftData[0].id;
@@ -252,6 +262,39 @@ const App: React.FC = () => {
           } else if (p.eventType === 'UPDATE') {
             const o = p.new as any;
             setOperators(prev => prev.map(op => op.id === o.id ? { id: o.id, name: o.name, employeeId: o.employee_id, isCertified: o.is_certified } : op));
+          }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'defect_types' }, (p) => {
+          if (p.eventType === 'DELETE') {
+            setDefectTypes(prev => prev.filter(d => d.id !== p.old.id));
+          } else if (p.eventType === 'INSERT') {
+            const d = p.new as any;
+            setDefectTypes(prev => [...prev, d].sort((a,b) => a.name.localeCompare(b.name)));
+          } else if (p.eventType === 'UPDATE') {
+            const d = p.new as any;
+            setDefectTypes(prev => prev.map(dt => dt.id === d.id ? d : dt).sort((a,b) => a.name.localeCompare(b.name)));
+          }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'breakdown_reasons' }, (p) => {
+          if (p.eventType === 'DELETE') {
+            setBreakdownReasons(prev => prev.filter(r => r.id !== p.old.id));
+          } else if (p.eventType === 'INSERT') {
+            const r = p.new as any;
+            setBreakdownReasons(prev => [...prev, r].sort((a,b) => a.name.localeCompare(b.name)));
+          } else if (p.eventType === 'UPDATE') {
+            const r = p.new as any;
+            setBreakdownReasons(prev => prev.map(rt => rt.id === r.id ? r : rt).sort((a,b) => a.name.localeCompare(b.name)));
+          }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cleaning_tasks' }, (p) => {
+          if (p.eventType === 'DELETE') {
+            setCleaningTasks(prev => prev.filter(t => t.id !== p.old.id));
+          } else if (p.eventType === 'INSERT') {
+            const t = p.new as any;
+            setCleaningTasks(prev => [...prev, t].sort((a,b) => a.label.localeCompare(b.label)));
+          } else if (p.eventType === 'UPDATE') {
+            const t = p.new as any;
+            setCleaningTasks(prev => prev.map(ct => ct.id === t.id ? t : ct).sort((a,b) => a.label.localeCompare(b.label)));
           }
       })
       .subscribe();
@@ -499,15 +542,16 @@ const App: React.FC = () => {
           </div>
         );
       case 'Inspections': return <InspectionPage pendingCrates={pendingCrates} machines={machines} products={products} batchRecords={batchRecords} operators={operators} onStartInspection={setInspectingBin} />;
-      case 'Batch Log': return <BatchLogPage batchRecords={batchRecords} products={products} pendingCrates={pendingCrates} />;
+      case 'Batch Log': return <BatchLogPage batchRecords={batchRecords} products={products} pendingCrates={pendingCrates} operators={operators} />;
       case 'Machines': 
         if (profile?.role !== 'Admin' && profile?.role !== 'PowerUser') {
           setActiveTab('Shop Floor');
           return null;
         }
-        return <AdminDashboard machines={machines} operators={operators} moulds={moulds} products={products} rawMaterials={rawMaterials} productMaterials={productMaterials} supervisors={[]} shiftSettings={shiftSettings} currentUserRole={profile.role} />;
+        return <AdminDashboard machines={machines} operators={operators} moulds={moulds} products={products} rawMaterials={rawMaterials} productMaterials={productMaterials} supervisors={[]} shiftSettings={shiftSettings} defectTypes={defectTypes} breakdownReasons={breakdownReasons} cleaningTasks={cleaningTasks} currentUserRole={profile.role} />;
       case 'Shift Log': return <ShiftLogPage machines={machines} operators={operators} products={products} moulds={moulds} />;
       case 'Breakdowns': return <BreakdownLogPage machines={machines} />;
+      case 'About': return <AboutPage />;
       default: return null;
     }
   };
@@ -674,6 +718,8 @@ const App: React.FC = () => {
             {!isViewOnly && (profile?.role === 'Admin' || profile?.role === 'PowerUser') && (
               <NavItem icon={<Cpu size={16}/>} label="Admin Console" active={activeTab==='Machines'} onClick={()=>setActiveTab('Machines')}/>
             )}
+            <div style={{ flex: 1 }} />
+            <NavItem icon={<Info size={16}/>} label="About" active={activeTab==='About'} onClick={()=>setActiveTab('About')}/>
         </nav>
       </div>
 
@@ -808,17 +854,20 @@ const App: React.FC = () => {
         onClose={()=>{setSelectedMachineId(null); setPendingBreakdownMachineId(null);}} 
         onConfirm={handleBinComplete} 
       />}
-      {inspectingBin && <InspectionModal binId={inspectingBin.id} netQty={inspectingBin.netQty} onClose={()=>setInspectingBin(null)} onConfirm={async (data)=>{
+      {inspectingBin && <InspectionModal binId={inspectingBin.id} netQty={inspectingBin.netQty} defectTypes={defectTypes} operators={operators} onClose={()=>setInspectingBin(null)} onConfirm={async (data)=>{
           const rejDetails = data.rejections.reduce((acc: any, r: any) => { if (r.count > 0) acc[r.category] = r.count; return acc; }, {});
           const rejQty = data.rejections.reduce((sum: number, r: any) => sum + r.count, 0);
           const diff = data.goodQty - inspectingBin.netQty;
+
+          const inspector = operators.find(o => o.id === data.inspectorId);
+          const inspectorDisplay = inspector ? `${inspector.name} (${inspector.employeeId})` : 'System';
 
           await supabase.from('crates').update({ 
             status: 'Completed', 
             net_qty: data.goodQty,
             rejected_qty: rejQty,
             rejection_details: rejDetails,
-            inspected_by: profile?.fullName || 'System',
+            inspected_by: inspectorDisplay,
             inspected_at: new Date().toISOString()
           }).eq('id', inspectingBin.id);
           
@@ -837,7 +886,7 @@ const App: React.FC = () => {
           setPendingCrates(prev => prev.filter(c => c.id !== inspectingBin.id));
           setInspectingBin(null);
       }} />}
-      {breakingMachineId && <BreakdownModal machineId={breakingMachineId} machineName={machines.find(m=>m.id===breakingMachineId)?.name || ''} onClose={()=>setBreakingMachineId(null)} onConfirm={async (data)=>{
+      {breakingMachineId && <BreakdownModal machineId={breakingMachineId} machineName={machines.find(m=>m.id===breakingMachineId)?.name || ''} breakdownReasons={breakdownReasons} onClose={()=>setBreakingMachineId(null)} onConfirm={async (data)=>{
           const m = machines.find(ma=>ma.id===breakingMachineId)!;
           await supabase.from('breakdown_records').insert({ id: `BRK-${Date.now()}`, machine_id: m.id, machine_name: m.name, start_time: new Date().toISOString(), reason: data.event, remarks: data.remarks, operator_id: m.currentOperatorId || 'UNASSIGNED', supervisor_name: profile?.fullName || 'Supervisor', status: 'Open' });
           await supabase.from('machines').update({ status: 'Maintenance', breakdown_start_time: Date.now() }).eq('id', m.id);
@@ -861,7 +910,7 @@ const App: React.FC = () => {
           await addLogEntry(resolvingMachineId, 'Breakdown Resolved', `Maintenance completed in ${duration}m, machine ready`);
           setResolvingMachineId(null);
       }} />}
-      {settingUpMachineId && <JobSetupModal machine={machines.find(m=>m.id===settingUpMachineId)!} allMachines={machines} products={products} moulds={moulds} rawMaterials={rawMaterials} productMaterials={productMaterials} onClose={()=>setSettingUpMachineId(null)} onAssignOperator={()=>setAssigningOperatorMachineId(settingUpMachineId)} onConfirm={async (data)=>{
+      {settingUpMachineId && <JobSetupModal machine={machines.find(m=>m.id===settingUpMachineId)!} allMachines={machines} products={products} moulds={moulds} rawMaterials={rawMaterials} productMaterials={productMaterials} cleaningTasks={cleaningTasks} onClose={()=>setSettingUpMachineId(null)} onAssignOperator={()=>setAssigningOperatorMachineId(settingUpMachineId)} onConfirm={async (data)=>{
           const p = products.find(pr => pr.id === data.productId);
           if (!p) return;
 

@@ -179,3 +179,60 @@ ALTER TABLE shift_summaries ADD COLUMN IF NOT EXISTS remarks TEXT;
 
 -- 12. Force Schema Cache Reload (Optional but recommended)
 NOTIFY pgrst, 'reload schema';
+
+-- 13. Defect Types Registry
+CREATE TABLE IF NOT EXISTS defect_types (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+ALTER TABLE defect_types ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all for defect_types') THEN
+        CREATE POLICY "Allow all for defect_types" ON defect_types FOR ALL TO public USING (true) WITH CHECK (true);
+    END IF;
+END $$;
+ALTER PUBLICATION supabase_realtime ADD TABLE defect_types;
+
+-- 14. Breakdown Reasons Registry
+CREATE TABLE IF NOT EXISTS breakdown_reasons (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+ALTER TABLE breakdown_reasons ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all for breakdown_reasons') THEN
+        CREATE POLICY "Allow all for breakdown_reasons" ON breakdown_reasons FOR ALL TO public USING (true) WITH CHECK (true);
+    END IF;
+END $$;
+-- Note: Realtime for breakdown_reasons is handled via DO block in separate script to be safe against "already member" errors.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'breakdown_reasons'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE breakdown_reasons;
+  END IF;
+END $$;
+
+-- 15. Cleaning Checklist Registry
+CREATE TABLE IF NOT EXISTS cleaning_tasks (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+ALTER TABLE cleaning_tasks ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all for cleaning_tasks') THEN
+        CREATE POLICY "Allow all for cleaning_tasks" ON cleaning_tasks FOR ALL TO public USING (true) WITH CHECK (true);
+    END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'cleaning_tasks') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE cleaning_tasks;
+  END IF;
+END $$;

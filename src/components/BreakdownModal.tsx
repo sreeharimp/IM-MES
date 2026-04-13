@@ -1,27 +1,19 @@
 import React, { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
+import type { BreakdownReason } from '../types';
+
 interface BreakdownModalProps {
   machineId: string;
   machineName: string;
+  breakdownReasons: BreakdownReason[];
   onClose: () => void;
   onConfirm: (data: { event: string; remarks: string }) => void;
 }
 
-const BREAKDOWN_EVENTS = [
-  "Nozzle Jam / Blockage",
-  "Heater / Thermocouple Failure",
-  "Mould Damage / Stuck Part",
-  "Material Shortage / Feed Issue",
-  "Power / Electrical Fluctuation",
-  "Hydraulic / Oil Leak",
-  "Robotic / Ejector Failure",
-  "Cooling / Water Temp Issue",
-  "Other (Specify in Remarks)"
-];
 
-const BreakdownModal: React.FC<BreakdownModalProps> = ({ machineId, machineName, onClose, onConfirm }) => {
-  const [event, setEvent] = useState(BREAKDOWN_EVENTS[0]);
+const BreakdownModal: React.FC<BreakdownModalProps> = ({ machineId, machineName, breakdownReasons, onClose, onConfirm }) => {
+  const [event, setEvent] = useState(breakdownReasons[0]?.name || 'Other');
   const [remarks, setRemarks] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,7 +42,8 @@ const BreakdownModal: React.FC<BreakdownModalProps> = ({ machineId, machineName,
                 onChange={(e) => setEvent(e.target.value)}
                 className="fsel"
               >
-                {BREAKDOWN_EVENTS.map(ev => <option key={ev} value={ev}>{ev}</option>)}
+                {breakdownReasons.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                <option value="Other">Other (Specify in Remarks)</option>
               </select>
             </div>
 
