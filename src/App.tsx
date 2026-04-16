@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LogOut, Wrench, Factory, History, Cpu, Menu, 
-  ChevronLeft, ScrollText, CheckCircle2, 
+  ChevronLeft, ChevronRight, ScrollText, CheckCircle2, 
   Play, UserPlus, ClipboardList, Square, AlertCircle, Info
 } from 'lucide-react';
 import './index.css';
@@ -27,6 +27,119 @@ import BatchLogPage from './components/BatchLogPage';
 import AboutPage from './components/AboutPage';
 
 type Tab = 'Shop Floor' | 'Inspections' | 'Batch Log' | 'Machines' | 'Shift Log' | 'Breakdowns' | 'About';
+
+function NavItem({ icon, label, active, onClick }: any) {
+  return (
+    <div className={`ni ${active ? 'active' : ''}`} onClick={onClick}>
+      <div className="nic">{icon}</div>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function MachineCard({ machine, products, operators, moulds, onAction, onComplete, onAssign, onResolve }: any) {
+  const p = products.find((pr: any) => pr.id === machine.activeProductId);
+  const o = operators.find((op: any) => op.id === machine.currentOperatorId);
+  const mld = moulds.find((m: any) => m.id === machine.currentMouldId);
+  const [prog, setProg] = useState(0);
+
+  useEffect(() => {
+    let t: any;
+    if (machine.status === 'Running' && machine.binStartTime) {
+      const update = () => {
+        const cycle = mld?.cycleTime || 60;
+        const target = machine.binTarget || 1000;
+        const elapsed = (Date.now() - machine.binStartTime!) / 1000;
+        setProg(Math.min(100, (elapsed / (target * cycle)) * 100));
+      };
+      update();
+      t = setInterval(update, 5000);
+    } else {
+      setProg(0);
+    }
+    return () => clearInterval(t);
+  }, [machine.status, machine.binStartTime, mld, machine.binTarget]);
+
+  return (
+    <div className={`mach ${machine.status.toLowerCase()}`}>
+      <div className="mh">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className={`st-ind ${machine.status.toLowerCase()}`} />
+          <div>
+            <div className="mn" style={{ fontSize: '14px', fontWeight: 700 }}>{machine.id}</div>
+            <div className="ms-lbl" style={{ fontSize: '10px', textTransform: 'uppercase', opacity: 0.7 }}>{machine.status}</div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '9px', color: 'var(--text3)', fontWeight: 600 }}>SYNCED</div>
+          <div className="mono" style={{ fontSize: '10px' }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        </div>
+      </div>
+
+      <div className="mb2">
+        {machine.status === 'Running' ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', gap: '8px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="ml">Ongoing Job</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p?.name || 'Unknown Product'}</div>
+                  <div className="tag tl" style={{ flexShrink: 0 }}>{machine.activeBatchId || 'NO BATCH'}</div>
+                </div>
+              </div>
+              <button className="btn bsm" onClick={onAssign} style={{ flexShrink: 0 }}><UserPlus size={14} /></button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px', marginTop: '12px' }}>
+              <div className="ml">Bin Filling</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text2)' }}>
+                {machine.status === 'Running' && machine.binStartTime && mld?.cycleTime ?
+                  Math.min(machine.binTarget || 1000, Math.floor((Date.now() - machine.binStartTime) / (mld.cycleTime * 1000)) * (mld.cavities || 1))
+                  : 0} / {machine.binTarget || 1000}
+              </div>
+            </div>
+            
+            <div className="pbg" style={{ marginTop: 0 }}>
+              <div className="pf g" style={{ width: `${prog}%` }} />
+            </div>
+
+            <div className="omg">
+              <div className="om"><div className="oml">Bin</div><div className="omv">#{machine.currentBinNumber}</div></div>
+              <div className="om"><div className="oml">Output</div><div className="omv">{machine.currentShiftProduction?.toLocaleString()}</div></div>
+              <div className="om"><div className="oml">Operator</div><div className="omv" style={{ fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o?.name || 'Unassigned'}</div></div>
+            </div>
+
+            <div className="mbr">
+              <button className="mbtn mpri" style={{ flex: 2 }} onClick={() => onComplete(machine.id)}><CheckCircle2 size={13} /> Complete Bin</button>
+              <button className="mbtn mwrn" style={{ flex: 1.2 }} onClick={() => onAction(machine.id, 'Maintenance')}><Wrench size={12} /> Breakdown</button>
+              <button className="mbtn mdan" style={{ flex: 1 }} onClick={() => onAction(machine.id, 'Stop')}><Square size={12} /> STOP</button>
+            </div>
+          </>
+        ) : (
+          <div style={{ padding: '4px 0' }}>
+            {machine.currentMouldId && (
+              <div style={{ marginBottom: '12px', padding: '10px', background: 'var(--bg3)', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
+                <div className="ml">Current Mould</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{moulds.find((m: any) => m.id === machine.currentMouldId)?.name || machine.currentMouldId}</div>
+                  <button className="btn bsm bdan" style={{ fontSize: '10px', padding: '2px 8px', flexShrink: 0 }} onClick={() => onAction(machine.id, 'Unload')}>Unload</button>
+                </div>
+              </div>
+            )}
+            <div className="mbr" style={{ marginTop: 0 }}>
+              {machine.status === 'Idle' && <button className="mbtn mpri" style={{ flex: 1.5 }} onClick={() => onAction(machine.id, 'Start')}><Play size={13} /> Start Job</button>}
+              {machine.status === 'Maintenance' && <button className="mbtn mwrn" style={{ flex: 1.5 }} onClick={onResolve}><CheckCircle2 size={13} /> Resolve</button>}
+              {machine.status !== 'Maintenance' && <button className="mbtn mwrn" style={{ flex: 1 }} onClick={() => onAction(machine.id, 'Maintenance')}><Wrench size={12} /> Breakdown</button>}
+              {machine.status !== 'Idle' && <button className="mbtn mdan" style={{ flex: 1 }} onClick={() => onAction(machine.id, 'Stop')}><Square size={12} /> STOP</button>}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -667,33 +780,68 @@ const App: React.FC = () => {
     );
   }
 
+
   return (
     <div id="app-layout">
-      {/* Session Modals Overlaying the Main App */}
+      {/* 1. Session Modals */}
       {showTakeControlModal && (
-        <div className="ov" style={{zIndex:10000}}>
+        <div className="ov" style={{ zIndex: 10000 }}>
           <div className="modal animate-scale-in" style={{ width: '400px' }}>
             <div className="mhd">
-               <div className="mtit">Taking Station Control</div>
+              <div className="mtit">Taking Station Control</div>
             </div>
-            <div className="mbd" style={{padding:'20px'}}>
-               <p style={{color:'var(--text2)', fontSize:'14px', marginBottom:'20px'}}>
-                  {isViewOnly ? 'Upgrade your current view-only session to an active supervisor session?' : 'You are taking over the system without a formal handover summary. Please confirm to proceed.'}
-               </p>
-               <div style={{display:'flex', gap:'12px'}}>
-                  <button className="btn bsec" style={{flex:1}} onClick={() => setShowTakeControlModal(false)}>Cancel</button>
-                  <button className="btn bpri" style={{flex:1}} onClick={() => {
-                     setShowTakeControlModal(false);
-                     setIsViewOnly(false); // Reset view-only status
-                     handleHandoverAcknowledge(appSettings?.currentShift || 'A');
-                  }}>Confirm Takeover</button>
-               </div>
+            <div className="mbd" style={{ padding: '20px' }}>
+              <p style={{ color: 'var(--text2)', fontSize: '14px', marginBottom: '20px' }}>
+                {isViewOnly ? 'Upgrade your current view-only session to an active supervisor session?' : 'You are taking over the system without a formal handover summary. Please confirm to proceed.'}
+              </p>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button className="btn bsec" style={{ flex: 1 }} onClick={() => setShowTakeControlModal(false)}>Cancel</button>
+                <button className="btn bpri" style={{ flex: 1 }} onClick={() => {
+                  setShowTakeControlModal(false);
+                  setIsViewOnly(false);
+                  handleHandoverAcknowledge(appSettings?.currentShift || 'A');
+                }}>Confirm Takeover</button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <div id="sidebar" className={isSidebarCollapsed ? 'collapsed' : ''}>
+      {pendingAction && (
+        <div className="ov animate-fade-in">
+          <div className="modal animate-scale-in" style={{ width: '320px', padding: '24px', textAlign: 'center' }}>
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Safety Confirmation</div>
+              <div style={{ fontSize: '13px', color: 'var(--text2)' }}>Enter PIN (1234) to confirm machine STOP</div>
+            </div>
+            <input
+              type="password"
+              className="fi"
+              style={{ width: '100%', textAlign: 'center', fontSize: '24px', letterSpacing: '8px', marginBottom: '20px' }}
+              autoFocus
+              maxLength={4}
+              onChange={async (e) => {
+                if (e.target.value === '1234') {
+                  const { machineId, nextStatus } = pendingAction.data;
+                  setMachines((prev: Machine[]) => prev.map(m => m.id === machineId ? { ...m, status: nextStatus as MachineStatus, currentOperatorId: null as any } : m));
+                  await supabase.from('machines').update({ status: nextStatus, current_operator_id: null }).eq('id', machineId);
+                  await addLogEntry(machineId, 'Machine Stopped', 'Machine manually stopped by supervisor');
+                  setPendingAction(null);
+                }
+              }}
+            />
+            <button className="btn bfull bsec" onClick={() => setPendingAction(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Navigation Components */}
+      <div 
+        className={`sidebar-overlay ${!isSidebarCollapsed ? 'open' : ''}`} 
+        onClick={() => setIsSidebarCollapsed(true)} 
+      />
+
+      <div id="sidebar" className={isSidebarCollapsed ? 'collapsed' : 'open'}>
         <div className="sl" style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', minHeight: '64px' }}>
           {!isSidebarCollapsed && (
             <div style={{ flex: 1 }}>
@@ -701,36 +849,74 @@ const App: React.FC = () => {
               <div className="sl-s">Execution System</div>
             </div>
           )}
-          <button className="btn bsm" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} style={{ padding: '8px', marginLeft: isSidebarCollapsed ? '0' : '8px' }}>
-            {isSidebarCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
+          <button className="btn bsm desktop-only" onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} style={{ padding: '8px', marginLeft: isSidebarCollapsed ? '0' : '8px' }}>
+            {isSidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
+
         </div>
         <div className="su">
-          <div className="ua">{(profile.fullName || 'U').split(' ').map(n=>n[0]).join('')}</div>
-          {!isSidebarCollapsed && <div><div className="un">{profile.fullName}</div><div className="ur">{profile.role || 'Supervisor'}</div></div>}
+          <div className="ua">{(profile?.fullName || 'U').split(' ').map(n => n[0]).join('')}</div>
+          {!isSidebarCollapsed && (
+            <div>
+              <div className="un">{profile?.fullName}</div>
+              <div className="ur">{profile?.role || 'Supervisor'}</div>
+            </div>
+          )}
         </div>
         <nav className="snav">
-            <NavItem icon={<Factory size={16}/>} label="Shop Floor" active={activeTab==='Shop Floor'} onClick={()=>setActiveTab('Shop Floor')}/>
-            <NavItem icon={<ClipboardList size={16}/>} label="Inspections" active={activeTab==='Inspections'} onClick={()=>setActiveTab('Inspections')}/>
-            <NavItem icon={<History size={16}/>} label="Batch Log" active={activeTab==='Batch Log'} onClick={()=>setActiveTab('Batch Log')}/>
-            <NavItem icon={<ScrollText size={16}/>} label="Shift Log" active={activeTab==='Shift Log'} onClick={()=>setActiveTab('Shift Log')}/>
-            <NavItem icon={<AlertCircle size={16}/>} label="Breakdowns" active={activeTab==='Breakdowns'} onClick={()=>setActiveTab('Breakdowns')}/>
+            <NavItem icon={<Factory size={16}/>} label="Shop Floor" active={activeTab==='Shop Floor'} onClick={()=>{setActiveTab('Shop Floor'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
+            <NavItem icon={<ClipboardList size={16}/>} label="Inspections" active={activeTab==='Inspections'} onClick={()=>{setActiveTab('Inspections'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
+            <NavItem icon={<History size={16}/>} label="Batch Log" active={activeTab==='Batch Log'} onClick={()=>{setActiveTab('Batch Log'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
+            <NavItem icon={<ScrollText size={16}/>} label="Shift Log" active={activeTab==='Shift Log'} onClick={()=>{setActiveTab('Shift Log'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
+            <NavItem icon={<AlertCircle size={16}/>} label="Breakdowns" active={activeTab==='Breakdowns'} onClick={()=>{setActiveTab('Breakdowns'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             {!isViewOnly && (profile?.role === 'Admin' || profile?.role === 'PowerUser') && (
-              <NavItem icon={<Cpu size={16}/>} label="Admin Console" active={activeTab==='Machines'} onClick={()=>setActiveTab('Machines')}/>
+              <NavItem icon={<Cpu size={16}/>} label="Admin Console" active={activeTab==='Machines'} onClick={()=>{setActiveTab('Machines'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
             <div style={{ flex: 1 }} />
-            <NavItem icon={<Info size={16}/>} label="About" active={activeTab==='About'} onClick={()=>setActiveTab('About')}/>
+            <NavItem icon={<Info size={16}/>} label="About" active={activeTab==='About'} onClick={()=>{setActiveTab('About'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
         </nav>
       </div>
 
+      {/* 3. Main Content Area */}
       <main id="main">
-        <header id="topbar" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
-          <div>
-            <div className="pt">{activeTab}</div>
-            <div className="ps">LIVE · Unit Output Dashboard</div>
+        <header id="topbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button 
+              className="btn bsm mobile-only" 
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+              style={{ padding: '8px' }}
+            >
+              <Menu size={20} />
+            </button>
+            <div className="desktop-only">
+              <div className="pt">{activeTab}</div>
+              <div className="ps">LIVE · Unit Output Dashboard</div>
+            </div>
+            <div className="mobile-only" style={{ fontSize: '15px', fontWeight: 700 }}>
+              {activeTab}
+            </div>
           </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', background: 'rgba(255,255,255,0.03)', padding: '6px 12px', borderRadius: '30px', border: '1px solid var(--border)' }}>
+
+          <div className="topbar-center" style={{ display: 'flex', alignItems: 'center', gap: '15px', background: 'rgba(255,255,255,0.03)', padding: '6px 12px', borderRadius: '30px', border: '1px solid var(--border)' }}>
+            <div className="desktop-only" style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text)' }}>
+                {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+            <div className="desktop-only" style={{ width: '1px', height: '20px', background: 'var(--border)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="pill pg" style={{ padding: '2px 8px', fontSize: '10px', fontWeight: 800 }}>S-{appSettings?.currentShift || 'A'}</div>
+              <div className="desktop-only">
+                {(profile?.role === 'Supervisor' ? profile?.fullName : appSettings?.activeSupervisorName) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text2)', borderLeft: '1px solid var(--border)', paddingLeft: '12px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600 }}>{profile?.role === 'Supervisor' ? profile?.fullName : appSettings?.activeSupervisorName}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
             <button 
               className="btn bsm" 
               style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0 }}
@@ -742,78 +928,47 @@ const App: React.FC = () => {
             >
               {isDarkMode ? '☀️' : '🌙'}
             </button>
-            <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--mono)', color: 'var(--text)' }}>
-                {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-              <div style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase' }}>
-                {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </div>
-            </div>
-            <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div className="pill pg" style={{ padding: '2px 10px', fontSize: '11px', fontWeight: 800 }}>SHIFT {appSettings?.currentShift || 'A'}</div>
-              {(profile?.role === 'Supervisor' ? profile?.fullName : appSettings?.activeSupervisorName) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text2)', borderLeft: '1px solid var(--border)', paddingLeft: '12px' }}>
-                  <UserPlus size={14} style={{ color: 'var(--blue)' }} />
-                  <span style={{ fontSize: '11px', fontWeight: 600 }}>
-                    {profile?.role === 'Supervisor' ? `${profile?.fullName} (${profile?.employeeCode || 'N/A'})` : appSettings?.activeSupervisorName}
-                    {isViewOnly && <span className="pill pd" style={{marginLeft:'8px', fontSize:'8px'}}>VIEW ONLY</span>}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            {isViewOnly && (
-              <button className="btn bpri bsm" onClick={() => setShowTakeControlModal(true)}>
-                <UserPlus size={16}/> Take Active Control
-              </button>
-            )}
-            <button className="btn bdan bsm" onClick={(profile.role === 'Admin' || profile.role === 'PowerUser' || isViewOnly) ? () => supabase.auth.signOut() : ()=>setIsHandoverSummaryOpen(true)}>
-              <LogOut size={16}/> {isViewOnly ? 'Exit View Mode' : 'Sign Out'}
+            <button className="btn bdan bsm" onClick={(profile?.role === 'Admin' || profile?.role === 'PowerUser' || isViewOnly) ? () => supabase.auth.signOut() : () => setIsHandoverSummaryOpen(true)}>
+              <LogOut size={16}/>
             </button>
           </div>
         </header>
-        <section id="content">{renderContent()}</section>
+
+        <section id="content">
+          {renderContent()}
+          <div className="mobile-only" style={{ height: '70px' }} />
+        </section>
       </main>
 
-      {pendingAction && (
-        <div className="ov animate-fade-in">
-          <div className="modal animate-scale-in" style={{width:'320px', padding:'24px', textAlign:'center'}}>
-            <div style={{marginBottom:'20px'}}>
-              <div style={{fontSize:'18px',fontWeight:600,marginBottom:'8px'}}>Safety Confirmation</div>
-              <div style={{fontSize:'13px',color:'var(--text2)'}}>Enter PIN (1234) to confirm machine STOP</div>
-            </div>
-            <input 
-              type="password" 
-              className="fi" 
-              style={{width:'100%',textAlign:'center',fontSize:'24px',letterSpacing:'8px',marginBottom:'20px'}}
-              autoFocus
-              maxLength={4}
-              onChange={async (e) => {
-                if (e.target.value === '1234') {
-                  const { machineId, nextStatus } = pendingAction.data;
-                  setMachines((prev: Machine[]) => prev.map(m => m.id === machineId ? { ...m, status: nextStatus as MachineStatus, currentOperatorId: null as any } : m));
-                  await supabase.from('machines').update({ status: nextStatus, current_operator_id: null }).eq('id', machineId);
-                  
-                  // Log the stop event
-                  await addLogEntry(machineId, 'Machine Stopped', 'Machine manually stopped by supervisor');
-                  
-                  setPendingAction(null);
-                }
-              }}
-            />
-            <button className="btn bbfull bsec" onClick={()=>setPendingAction(null)}>Cancel</button>
-          </div>
+      {/* Bottom Navigation for Mobile */}
+      <nav className="bottom-nav">
+        <div className={`bn-item ${activeTab === 'Shop Floor' ? 'active' : ''}`} onClick={() => setActiveTab('Shop Floor')}>
+          <Factory size={20} />
+          <span>Shop Floor</span>
         </div>
-      )}
-      {isHandoverSummaryOpen && <HandoverSummaryModal machines={machines} pendingCrates={pendingCrates} onClose={()=>setIsHandoverSummaryOpen(false)} onConfirm={async (data) => {
-          try {
-            // 1. Log the audit summary
-            const { error: logErr } = await supabase.from('shift_summaries').insert({
+        <div className={`bn-item ${activeTab === 'Inspections' ? 'active' : ''}`} onClick={() => setActiveTab('Inspections')}>
+          <ClipboardList size={20} />
+          <span>Inspection</span>
+        </div>
+        <div className={`bn-item ${activeTab === 'Batch Log' ? 'active' : ''}`} onClick={() => setActiveTab('Batch Log')}>
+          <History size={20} />
+          <span>Log</span>
+        </div>
+        <div className={`bn-item ${activeTab === 'Shift Log' ? 'active' : ''}`} onClick={() => setActiveTab('Shift Log')}>
+          <ScrollText size={20} />
+          <span>Shift</span>
+        </div>
+      </nav>
+
+      {/* 4. Global Modals */}
+      {isHandoverSummaryOpen && (
+        <HandoverSummaryModal 
+          machines={machines} 
+          pendingCrates={pendingCrates} 
+          onClose={() => setIsHandoverSummaryOpen(false)} 
+          onConfirm={async (data) => {
+            try {
+              const { error: logErr } = await supabase.from('shift_summaries').insert({
                 id: `S-${Date.now()}`,
                 shift_date: new Date().toISOString().split('T')[0],
                 shift_id: appSettings?.currentShift || 'A',
@@ -823,297 +978,187 @@ const App: React.FC = () => {
                 running_machines: data.runningMachines,
                 pending_crates: data.pendingCrates,
                 remarks: data.notes || 'End of shift handover summary'
-            });
-
-            if (logErr) throw new Error(`Log Error: ${logErr.message}`);
-
-            // 2. Alert the system that a handover is pending for the next user
-            const { error: setErr } = await supabase.from('app_settings').upsert({ 
+              });
+              if (logErr) throw new Error(`Log Error: ${logErr.message}`);
+              const { error: setErr } = await supabase.from('app_settings').upsert({ 
                 id: 'global',
                 pending_handover: true, 
                 last_handover_summary: data, 
                 outgoing_supervisor_email: profile?.email || null,
                 current_shift: appSettings?.currentShift || 'A'
-            });
+              });
+              if (setErr) throw new Error(`State Error: ${setErr.message}`);
+              await supabase.auth.signOut();
+            } catch (err: any) {
+              console.error('Sign Out Handover Error:', err);
+              alert(`Handover failed! Your summary was not saved: ${err.message}`);
+            }
+          }} 
+        />
+      )}
 
-            if (setErr) throw new Error(`State Error: ${setErr.message}`);
+      {selectedMachineId && (
+        <BinCompleteModal 
+          machine={machines.find(m => m.id === selectedMachineId)!} 
+          binNumber={machines.find(m => m.id === selectedMachineId)!.currentBinNumber} 
+          operatorName={operators.find(o => o.id === machines.find(m => m.id === selectedMachineId)!.currentOperatorId)?.name || 'Unknown Operator'}
+          operatorCode={operators.find(o => o.id === machines.find(m => m.id === selectedMachineId)!.currentOperatorId)?.employeeId || 'N/A'}
+          shift={appSettings?.currentShift || 'A'}
+          onClose={() => { setSelectedMachineId(null); setPendingBreakdownMachineId(null); }} 
+          onConfirm={handleBinComplete} 
+        />
+      )}
 
-            // 3. Only sign out IF the above succeeded
-            await supabase.auth.signOut();
-          } catch (err: any) {
-            console.error('Sign Out Handover Error:', err);
-            alert(`Handover failed! Your summary was not saved: ${err.message}`);
-          }
-      }} />}
-      {selectedMachineId && <BinCompleteModal 
-        machine={machines.find(m=>m.id===selectedMachineId)!} 
-        binNumber={machines.find(m=>m.id===selectedMachineId)!.currentBinNumber} 
-        operatorName={operators.find(o=>o.id===machines.find(m=>m.id===selectedMachineId)!.currentOperatorId)?.name || 'Unknown Operator'}
-        operatorCode={operators.find(o=>o.id===machines.find(m=>m.id===selectedMachineId)!.currentOperatorId)?.employeeId || 'N/A'}
-        shift={appSettings?.currentShift || 'A'}
-        onClose={()=>{setSelectedMachineId(null); setPendingBreakdownMachineId(null);}} 
-        onConfirm={handleBinComplete} 
-      />}
-      {inspectingBin && <InspectionModal binId={inspectingBin.id} netQty={inspectingBin.netQty} defectTypes={defectTypes} operators={operators} onClose={()=>setInspectingBin(null)} onConfirm={async (data)=>{
-          const rejDetails = data.rejections.reduce((acc: any, r: any) => { if (r.count > 0) acc[r.category] = r.count; return acc; }, {});
-          const rejQty = data.rejections.reduce((sum: number, r: any) => sum + r.count, 0);
-          const diff = data.goodQty - inspectingBin.netQty;
-
-          const inspector = operators.find(o => o.id === data.inspectorId);
-          const inspectorDisplay = inspector ? `${inspector.name} (${inspector.employeeId})` : 'System';
-
-          await supabase.from('crates').update({ 
-            status: 'Completed', 
-            net_qty: data.goodQty,
-            rejected_qty: rejQty,
-            rejection_details: rejDetails,
-            inspected_by: inspectorDisplay,
-            inspected_at: new Date().toISOString()
-          }).eq('id', inspectingBin.id);
-          
-          if (diff !== 0) {
-            const crate = pendingCrates.find(c => c.id === inspectingBin.id);
-            if (crate && crate.batchId) {
-              const b = batchRecords.find(br => br.id === crate.batchId);
-              if (b) {
-                await supabase.from('batch_records')
-                  .update({ total_output: (b.totalOutput || 0) + diff })
-                  .eq('id', crate.batchId);
+      {inspectingBin && (
+        <InspectionModal 
+          binId={inspectingBin.id} 
+          netQty={inspectingBin.netQty} 
+          defectTypes={defectTypes} 
+          operators={operators} 
+          onClose={() => setInspectingBin(null)} 
+          onConfirm={async (data) => {
+            const rejDetails = data.rejections.reduce((acc: any, r: any) => { if (r.count > 0) acc[r.category] = r.count; return acc; }, {});
+            const rejQty = data.rejections.reduce((sum: number, r: any) => sum + r.count, 0);
+            const diff = data.goodQty - inspectingBin.netQty;
+            const inspector = operators.find(o => o.id === data.inspectorId);
+            const inspectorDisplay = inspector ? `${inspector.name} (${inspector.employeeId})` : 'System';
+            await supabase.from('crates').update({ 
+              status: 'Completed', 
+              net_qty: data.goodQty,
+              rejected_qty: rejQty,
+              rejection_details: rejDetails,
+              inspected_by: inspectorDisplay,
+              inspected_at: new Date().toISOString()
+            }).eq('id', inspectingBin.id);
+            if (diff !== 0) {
+              const crate = pendingCrates.find(c => c.id === inspectingBin.id);
+              if (crate?.batchId) {
+                const b = batchRecords.find(br => br.id === crate.batchId);
+                if (b) await supabase.from('batch_records').update({ total_output: (b.totalOutput || 0) + diff }).eq('id', crate.batchId);
               }
             }
-          }
+            setPendingCrates(prev => prev.filter(c => c.id !== inspectingBin.id));
+            setInspectingBin(null);
+          }} 
+        />
+      )}
 
-          setPendingCrates(prev => prev.filter(c => c.id !== inspectingBin.id));
-          setInspectingBin(null);
-      }} />}
-      {breakingMachineId && <BreakdownModal machineId={breakingMachineId} machineName={machines.find(m=>m.id===breakingMachineId)?.name || ''} breakdownReasons={breakdownReasons} onClose={()=>setBreakingMachineId(null)} onConfirm={async (data)=>{
-          const m = machines.find(ma=>ma.id===breakingMachineId)!;
-          await supabase.from('breakdown_records').insert({ id: `BRK-${Date.now()}`, machine_id: m.id, machine_name: m.name, start_time: new Date().toISOString(), reason: data.event, remarks: data.remarks, operator_id: m.currentOperatorId || 'UNASSIGNED', supervisor_name: profile?.fullName || 'Supervisor', status: 'Open' });
-          await supabase.from('machines').update({ status: 'Maintenance', breakdown_start_time: Date.now() }).eq('id', m.id);
-          await addLogEntry(m.id, 'Breakdown Reported', `Machine into maintenance: ${data.event}`, m.currentOperatorId || undefined);
-          setBreakingMachineId(null);
-      }} />}
-      {resolvingMachineId && <ResolveBreakdownModal machineName={machines.find(m=>m.id===resolvingMachineId)?.name || ''} onClose={()=>setResolvingMachineId(null)} onConfirm={async ()=>{
-          const m = machines.find(ma=>ma.id===resolvingMachineId)!;
-          const endTime = new Date();
-          const startTime = m.breakdownStartTime ? new Date(m.breakdownStartTime) : new Date();
-          const duration = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+      {breakingMachineId && (
+        <BreakdownModal 
+          machineId={breakingMachineId} 
+          machineName={machines.find(m => m.id === breakingMachineId)?.name || ''} 
+          breakdownReasons={breakdownReasons} 
+          onClose={() => setBreakingMachineId(null)} 
+          onConfirm={async (data) => {
+            const m = machines.find(ma => ma.id === breakingMachineId)!;
+            await supabase.from('breakdown_records').insert({ id: `BRK-${Date.now()}`, machine_id: m.id, machine_name: m.name, start_time: new Date().toISOString(), reason: data.event, remarks: data.remarks, operator_id: m.currentOperatorId || 'UNASSIGNED', supervisor_name: profile?.fullName || 'Supervisor', status: 'Open' });
+            await supabase.from('machines').update({ status: 'Maintenance', breakdown_start_time: Date.now() }).eq('id', m.id);
+            await addLogEntry(m.id, 'Breakdown Reported', `Machine into maintenance: ${data.event}`, m.currentOperatorId || undefined);
+            setBreakingMachineId(null);
+          }} 
+        />
+      )}
 
-          // Update the open breakdown record
-          await supabase.from('breakdown_records')
-            .update({ status: 'Resolved', end_time: endTime.toISOString(), duration_minutes: duration })
-            .eq('machine_id', resolvingMachineId)
-            .eq('status', 'Open');
+      {resolvingMachineId && (
+        <ResolveBreakdownModal 
+          machineName={machines.find(m => m.id === resolvingMachineId)?.name || ''} 
+          onClose={() => setResolvingMachineId(null)} 
+          onConfirm={async () => {
+            const m = machines.find(ma => ma.id === resolvingMachineId)!;
+            const endTime = new Date();
+            const startTime = m.breakdownStartTime ? new Date(m.breakdownStartTime) : new Date();
+            const duration = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+            await supabase.from('breakdown_records').update({ status: 'Resolved', end_time: endTime.toISOString(), duration_minutes: duration }).eq('machine_id', resolvingMachineId).eq('status', 'Open');
+            await supabase.from('machines').update({ status: 'Idle', breakdown_start_time: null }).eq('id', resolvingMachineId);
+            setMachines((prev: Machine[]) => prev.map(ma => ma.id === resolvingMachineId ? { ...ma, status: 'Idle', breakdownStartTime: undefined } : ma));
+            await addLogEntry(resolvingMachineId, 'Breakdown Resolved', `Maintenance completed in ${duration}m, machine ready`);
+            setResolvingMachineId(null);
+          }} 
+        />
+      )}
 
-          await supabase.from('machines').update({ status: 'Idle', breakdown_start_time: null }).eq('id', resolvingMachineId);
-          setMachines((prev: Machine[]) => prev.map(m => m.id === resolvingMachineId ? { ...m, status: 'Idle', breakdownStartTime: undefined } : m));
-          await addLogEntry(resolvingMachineId, 'Breakdown Resolved', `Maintenance completed in ${duration}m, machine ready`);
-          setResolvingMachineId(null);
-      }} />}
-      {settingUpMachineId && <JobSetupModal machine={machines.find(m=>m.id===settingUpMachineId)!} allMachines={machines} products={products} moulds={moulds} rawMaterials={rawMaterials} productMaterials={productMaterials} cleaningTasks={cleaningTasks} onClose={()=>setSettingUpMachineId(null)} onAssignOperator={()=>setAssigningOperatorMachineId(settingUpMachineId)} onConfirm={async (data)=>{
-          const p = products.find(pr => pr.id === data.productId);
-          if (!p) return;
-
-          const { batchId: bid, batchDateStr: batchDate } = getBatchSummary(p.batchIdentifier || 'XX');
-          
-          if (data.isMouldChanged) {
-            // New Job - Always start new batch
-            await supabase.from('batch_records').upsert({ 
-              id: bid, 
-              machine_id: settingUpMachineId, 
-              product_id: data.productId, 
-              product_name: p.name, 
-              product_code: p.itemCode, 
-              mould_id: data.mouldId, 
-              material_id: data.materialId, 
-              material_grade: data.materialGrade, 
-              material_batch: data.materialBatch, 
-              operator_id: '', 
-              start_time: new Date().toISOString(), 
-              crates: 0, 
-              total_output: 0, 
-              status: 'Active', 
-              batch_date: batchDate 
-            });
-            await supabase.from('machines').update({ 
-              status: 'Running', 
-              current_mould_id: data.mouldId, 
-              active_product_id: data.productId, 
-              active_batch_id: bid, 
-              active_batch_date: batchDate, 
-              current_bin_number: 1, 
-              current_shift_production: 0, 
-              current_day_production: 0,
-              bin_start_time: Date.now(),
-              bin_target: data.binTarget
-            }).eq('id', settingUpMachineId);
-            
-            await addLogEntry(settingUpMachineId, 'Machine Started', `New job started for ${p.name} (Batch: ${bid})`);
-          } else {
-            // Resume Production
-            const m = machines.find(ma => ma.id === settingUpMachineId);
-            const isDifferentDay = m?.activeBatchDate && m.activeBatchDate !== batchDate;
-
-            if (isDifferentDay) {
-              // Day has changed since last stop, do a rollover even on resume
+      {settingUpMachineId && (
+        <JobSetupModal 
+          machine={machines.find(m => m.id === settingUpMachineId)!} 
+          allMachines={machines} 
+          products={products} 
+          moulds={moulds} 
+          rawMaterials={rawMaterials} 
+          productMaterials={productMaterials} 
+          cleaningTasks={cleaningTasks} 
+          onClose={() => setSettingUpMachineId(null)} 
+          onAssignOperator={() => setAssigningOperatorMachineId(settingUpMachineId)} 
+          onConfirm={async (data) => {
+            const p = products.find(pr => pr.id === data.productId);
+            if (!p) return;
+            const { batchId: bid, batchDateStr: batchDate } = getBatchSummary(p.batchIdentifier || 'XX');
+            if (data.isMouldChanged) {
               await supabase.from('batch_records').upsert({ 
-                id: bid, 
-                machine_id: settingUpMachineId, 
-                product_id: data.productId, 
-                product_name: p.name, 
-                product_code: p.itemCode, 
-                mould_id: data.mouldId, 
-                material_id: data.materialId, 
-                material_grade: data.materialGrade, 
-                material_batch: data.materialBatch, 
-                operator_id: '', 
-                start_time: new Date().toISOString(), 
-                crates: 0, 
-                total_output: 0, 
-                status: 'Active', 
-                batch_date: batchDate 
+                id: bid, machine_id: settingUpMachineId, product_id: data.productId, 
+                product_name: p.name, product_code: p.itemCode, mould_id: data.mouldId, 
+                material_id: data.materialId, material_grade: data.materialGrade, 
+                material_batch: data.materialBatch, operator_id: '', 
+                start_time: new Date().toISOString(), crates: 0, total_output: 0, 
+                status: 'Active', batch_date: batchDate 
               });
               await supabase.from('machines').update({ 
-                status: 'Running', 
-                active_batch_id: bid, 
-                active_batch_date: batchDate, 
-                current_bin_number: 1, 
-                current_shift_production: 0, 
-                current_day_production: 0,
-                bin_start_time: Date.now(),
-                bin_target: data.binTarget
+                status: 'Running', current_mould_id: data.mouldId, active_product_id: data.productId, 
+                active_batch_id: bid, active_batch_date: batchDate, current_bin_number: 1, 
+                current_shift_production: 0, current_day_production: 0, bin_start_time: Date.now(), bin_target: data.binTarget
               }).eq('id', settingUpMachineId);
-              await addLogEntry(settingUpMachineId, 'Machine Resumed', `Resumed with new batch rollover for ${p.name}`);
+              await addLogEntry(settingUpMachineId, 'Machine Started', `New job started for ${p.name} (Batch: ${bid})`);
             } else {
-              // Same day - just start running
-              // Fetch latest batch count to ensure we continue from the correct number
-              const { data: latestBatch } = await supabase.from('batch_records').select('crates').eq('id', bid).maybeSingle();
-              const nextBin = (latestBatch?.crates || 0) + 1;
-
-              await supabase.from('machines').update({ 
-                status: 'Running', 
-                bin_start_time: Date.now(),
-                bin_target: data.binTarget,
-                current_bin_number: nextBin
-              }).eq('id', settingUpMachineId);
-
-              setMachines(prev => prev.map(m => m.id === settingUpMachineId ? { 
-                ...m, 
-                status: 'Running', 
-                binStartTime: Date.now(), 
-                binTarget: data.binTarget, 
-                currentBinNumber: nextBin 
-              } : m));
-
-              await addLogEntry(settingUpMachineId, 'Machine Resumed', `Resumed production for ${p.name}. Next Bin: #${nextBin}`);
+              const m = machines.find(ma => ma.id === settingUpMachineId);
+              const isDiffDay = m?.activeBatchDate && m.activeBatchDate !== batchDate;
+              if (isDiffDay) {
+                await supabase.from('batch_records').upsert({ 
+                  id: bid, machine_id: settingUpMachineId, product_id: data.productId, 
+                  product_name: p.name, product_code: p.itemCode, mould_id: data.mouldId, 
+                  material_id: data.materialId, material_grade: data.materialGrade, 
+                  material_batch: data.materialBatch, operator_id: '', 
+                  start_time: new Date().toISOString(), crates: 0, total_output: 0, 
+                  status: 'Active', batch_date: batchDate 
+                });
+                await supabase.from('machines').update({ 
+                  status: 'Running', active_batch_id: bid, active_batch_date: batchDate, 
+                  current_bin_number: 1, current_shift_production: 0, current_day_production: 0, 
+                  bin_start_time: Date.now(), bin_target: data.binTarget
+                }).eq('id', settingUpMachineId);
+                await addLogEntry(settingUpMachineId, 'Machine Resumed', `Resumed with rollover for ${p.name}`);
+              } else {
+                const { data: latestBatch } = await supabase.from('batch_records').select('crates').eq('id', bid).maybeSingle();
+                const nextBin = (latestBatch?.crates || 0) + 1;
+                await supabase.from('machines').update({ status: 'Running', bin_start_time: Date.now(), bin_target: data.binTarget, current_bin_number: nextBin }).eq('id', settingUpMachineId);
+                setMachines(prev => prev.map(ma => ma.id === settingUpMachineId ? { ...ma, status: 'Running', binStartTime: Date.now(), binTarget: data.binTarget, currentBinNumber: nextBin } : ma));
+                await addLogEntry(settingUpMachineId, 'Machine Resumed', `Resumed for ${p.name}. Next Bin: #${nextBin}`);
+              }
             }
-          }
-          
-          setSettingUpMachineId(null);
-      }} />}
-      {assigningOperatorMachineId && <ForceOperatorAssignmentModal machines={machines.filter(m=>m.id===assigningOperatorMachineId)} operators={operators} onClose={()=>setAssigningOperatorMachineId(null)} onConfirm={async (asgs) => { 
-        setMachines(prev => prev.map(m => { const a = asgs.find(asg => asg.machineId === m.id); return a ? { ...m, currentOperatorId: a.operatorId } : m; }));
-        for (const a of asgs) {
-          if (a.operatorId) {
-            await supabase.from('machines').update({ current_operator_id: a.operatorId }).eq('id', a.machineId);
-            const opName = operators.find(o => o.id === a.operatorId)?.name || a.operatorId;
-            await addLogEntry(a.machineId, 'Operator Assigned', `Operator ${opName} reassigned mid-shift`, a.operatorId);
-          }
-        } 
-        setAssigningOperatorMachineId(null); 
-      }} />}
-    </div>
-  );
-};
+            setSettingUpMachineId(null);
+          }} 
+        />
+      )}
 
-const NavItem = ({ icon, label, active, onClick }: any) => <div className={`ni ${active ? 'active' : ''}`} onClick={onClick}><div className="nic">{icon}</div><span>{label}</span></div>;
-const MachineCard = ({ machine, products, operators, moulds, onAction, onComplete, onAssign, onResolve }: any) => {
-  const p = products.find((pr:any) => pr.id === machine.activeProductId);
-  const o = operators.find((op:any) => op.id === machine.currentOperatorId);
-  const mld = moulds.find((m:any) => m.id === machine.currentMouldId);
-  const [prog, setProg] = useState(0);
-
-  useEffect(() => {
-    if (machine.status !== 'Running' || !machine.binStartTime || !mld?.cycleTime || !machine.binTarget) {
-      setProg(0); return;
-    }
-    const update = () => {
-      const elapsed = (Date.now() - machine.binStartTime) / 1000;
-      const targetSecs = machine.binTarget! * mld.cycleTime!;
-      setProg(Math.min(100, Math.max(0, (elapsed / targetSecs) * 100)));
-    };
-    update();
-    const t = setInterval(update, 2000);
-    return () => clearInterval(t);
-  }, [machine.status, machine.binStartTime, mld, machine.binTarget]);
-
-  // Normalize maintenance to breakdown for css
-  const statusClass = machine.status.toLowerCase() === 'maintenance' ? 'breakdown' : machine.status.toLowerCase();
-  
-  return (
-    <div className={`mach ${statusClass}`}>
-      <div className="mh">
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-          <div className="tag mono" style={{fontSize:'10px',background:'var(--bg4)',padding:'1px 6px'}}>{machine.id}</div>
-          <div className="mid">{machine.name}</div>
-        </div>
-        <div className={`pill ${machine.status==='Running'?'pg':machine.status==='Maintenance'?'pr':'pd'}`}><span className={`dot ${machine.status==='Running'?'g':machine.status==='Maintenance'?'r':'i'}`} />{machine.status}</div>
-      </div>
-      <div className="mb2">
-        {machine.status === 'Running' ? (
-          <>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-              <div>
-                <div className="ml">Active Job</div>
-                <div style={{display:'flex',alignItems:'center',gap:'8px',marginTop:'4px'}}>
-                   <div style={{fontSize:'15px',fontWeight:600}}>{p?.name || '---'}</div>
-                   <div className="tag tl" style={{fontSize:'12px',fontWeight:700,padding:'2px 8px'}}>{machine.activeBatchId || 'NO BATCH'}</div>
-                </div>
-              </div>
-              <button className="btn bsm" onClick={onAssign}><UserPlus size={12}/></button>
-            </div>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:'4px',marginTop:'12px'}}>
-              <div className="ml">Bin Progress</div>
-              <div style={{fontSize:'11px',fontWeight:700,fontFamily:'var(--mono)',color:'var(--text2)'}}>
-                {machine.status === 'Running' && machine.binStartTime && mld?.cycleTime ? 
-                  Math.min(machine.binTarget || 1000, Math.floor((Date.now() - machine.binStartTime) / (mld.cycleTime * 1000)) * (mld.cavities || 1)) 
-                  : 0} / {machine.binTarget || 1000}
-              </div>
-            </div>
-            <div className="pbg" style={{marginTop:0}}><div className="pf g" style={{width:`${prog}%` }} /></div>
-            <div className="omg">
-                <div className="om"><div className="oml">Bin</div><div className="omv">#{machine.currentBinNumber}</div></div>
-                <div className="om"><div className="oml">Output</div><div className="omv">{machine.currentShiftProduction}</div></div>
-                <div className="om"><div className="oml">Operator</div><div className="omv" style={{fontSize:'10px'}}>{o?.name || '---'}</div></div>
-            </div>
-            <div className="mbr">
-               <button className="mbtn mpri" style={{flex:2}} onClick={() => onComplete(machine.id)}><CheckCircle2 size={13}/> Complete Bin</button>
-               <button className="mbtn mwrn" style={{flex:1}} onClick={()=>onAction(machine.id,'Maintenance')}><Wrench size={12}/> Breakdown</button>
-               <button className="mbtn mdan" style={{flex:1}} onClick={()=>onAction(machine.id,'Stop')}><Square size={12}/> STOP</button>
-            </div>
-          </>
-        ) : (
-          <div style={{padding:'4px 0'}}>
-             {(machine.currentMouldId) && (
-               <div style={{marginBottom:'12px', padding:'10px', background:'var(--bg3)', borderRadius:'var(--r)', border:'1px solid var(--border)'}}>
-                 <div className="ml">Current Mould</div>
-                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                   <div style={{fontSize:'13px', fontWeight:600}}>{moulds.find((m: any) => m.id === machine.currentMouldId)?.name || machine.currentMouldId}</div>
-                   <button className="btn bsm bdan" style={{fontSize:'10px', padding:'2px 8px'}} onClick={()=>onAction(machine.id, 'Unload')}>Unload</button>
-                 </div>
-               </div>
-             )}
-              <div className="mbr" style={{marginTop:0}}>
-                 {machine.status === 'Idle' && <button className="mbtn mpri" style={{flex:1.5}} onClick={()=>onAction(machine.id,'Start')}><Play size={13}/> Start Job</button>}
-                 {machine.status === 'Maintenance' && <button className="mbtn mwrn" style={{flex:1.5}} onClick={onResolve}><CheckCircle2 size={13}/> Resolve</button>}
-                 {machine.status !== 'Maintenance' && <button className="mbtn mwrn" style={{flex:1}} onClick={()=>onAction(machine.id,'Maintenance')}><Wrench size={12}/> Breakdown</button>}
-                 {machine.status !== 'Idle' && <button className="mbtn mdan" style={{flex:1}} onClick={()=>onAction(machine.id,'Stop')}><Square size={12}/> STOP</button>}
-              </div>
-          </div>
-        )}
-      </div>
+      {assigningOperatorMachineId && (
+        <ForceOperatorAssignmentModal 
+          machines={machines.filter(m => m.id === assigningOperatorMachineId)} 
+          operators={operators} 
+          onClose={() => setAssigningOperatorMachineId(null)} 
+          onConfirm={async (asgs) => { 
+            setMachines(prev => prev.map(m => { const a = asgs.find(asg => asg.machineId === m.id); return a ? { ...m, currentOperatorId: a.operatorId } : m; }));
+            for (const a of asgs) {
+              if (a.operatorId) {
+                await supabase.from('machines').update({ current_operator_id: a.operatorId }).eq('id', a.machineId);
+                const opName = operators.find(o => o.id === a.operatorId)?.name || a.operatorId;
+                await addLogEntry(a.machineId, 'Operator Assigned', `Operator ${opName} reassigned mid-shift`, a.operatorId);
+              }
+            } 
+            setAssigningOperatorMachineId(null); 
+          }} 
+        />
+      )}
     </div>
   );
 };
 
 export default App;
+

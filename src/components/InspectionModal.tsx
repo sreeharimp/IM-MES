@@ -305,18 +305,41 @@ const InspectionModal: React.FC<InspectionModalProps> = ({ binId, netQty, defect
         @media (max-width: 768px) {
           .inspection-grid {
             grid-template-columns: 1fr;
-            gap: 24px;
+            gap: 16px;
           }
           
           .modal-container {
             max-width: 100%;
             margin: 0;
-            border-radius: 0;
-            min-height: 100vh;
+            border-radius: var(--rl);
+            max-height: 95vh;
+            overflow: hidden;
+          }
+
+          .modal-header {
+            padding: 16px 20px !important;
+          }
+
+          .modal-body {
+            padding: 16px 20px !important;
+            overflow-y: auto;
           }
 
           .summary-cards {
             grid-template-columns: 1fr 1fr;
+            gap: 10px;
+          }
+
+          .rejection-item {
+            padding: 10px 12px;
+          }
+
+          .modal-title {
+            font-size: 16px !important;
+          }
+
+          .sum-val {
+            font-size: 24px;
           }
         }
 
@@ -324,26 +347,26 @@ const InspectionModal: React.FC<InspectionModalProps> = ({ binId, netQty, defect
         @media (max-height: 600px) {
           .modal-container {
             max-width: 95vw;
+            max-height: 95vh;
           }
           .modal-header {
-            padding: 12px 20px !important;
+            padding: 10px 20px !important;
           }
           .modal-body {
-            padding: 12px 20px !important;
-            max-height: calc(100vh - 120px);
+            padding: 10px 20px !important;
             overflow-y: auto;
           }
           .inspection-grid {
-            gap: 16px;
+            gap: 12px;
           }
           .rejection-item {
-            padding: 6px 14px;
+            padding: 6px 12px;
           }
-          .sum-card {
-            padding: 12px;
+          .summary-cards {
+            margin-bottom: 12px;
           }
           .sum-val {
-            font-size: 24px;
+            font-size: 20px;
           }
         }
       `}</style>
