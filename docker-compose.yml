@@ -1,0 +1,10 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agney-production-app
+    restart: always
+    ports:
+      - "3000:80"
+
