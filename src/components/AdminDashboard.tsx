@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Trash2, Users, Box, Layers, Database, Cpu, RefreshCcw, Edit2, X, ShieldCheck, Clock, AlertTriangle, Wrench } from 'lucide-react';
 import type { Machine, Operator, Mould, Product, RawMaterial, ProductMaterial, ShiftSetting, DefectType, BreakdownReason, CleaningTask } from '../types';
 import { supabase } from '../lib/supabase';
+import { logSystemChange } from '../utils/systemChanges';
 
 interface AdminDashboardProps {
   machines: Machine[];
@@ -16,6 +17,8 @@ interface AdminDashboardProps {
   breakdownReasons: BreakdownReason[];
   cleaningTasks: CleaningTask[];
   currentUserRole: string;
+  currentUserName?: string;
+  currentUserId?: string;
 }
 
 const ShiftRow = ({ s, updateShiftTiming }: { s: ShiftSetting, updateShiftTiming: (id: string, start: string, end: string) => void }) => {
@@ -53,7 +56,8 @@ const ShiftRow = ({ s, updateShiftTiming }: { s: ShiftSetting, updateShiftTiming
 };
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  machines, operators, moulds, products, rawMaterials, productMaterials, supervisors, shiftSettings, defectTypes, breakdownReasons, cleaningTasks, currentUserRole 
+  machines, operators, moulds, products, rawMaterials, productMaterials, supervisors, shiftSettings, defectTypes, breakdownReasons, cleaningTasks, currentUserRole,
+  currentUserName = 'Admin', currentUserId
 }) => {
   const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users' | 'defects' | 'breakdowns' | 'checklist'>('machines');
   const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string }[]>([]);
@@ -111,11 +115,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const updateShiftTiming = async (id: string, startTime: string, endTime: string) => {
     if (!startTime || !endTime) return;
+    const existing = shiftSettings.find(s => s.id === id);
     const { error } = await supabase.from('shift_settings').update({ start_time: startTime, end_time: endTime }).eq('id', id);
     if (error) {
       showError(`Error updating shift: ${error.message}`);
     } else {
       showSuccess(`Shift ${id} updated to ${startTime} - ${endTime}`);
+      logSystemChange({
+        module: 'Shift Config',
+        tableName: 'shift_settings',
+        recordId: id,
+        fieldChanged: 'timing',
+        oldValue: existing ? `${existing.startTime} - ${existing.endTime}` : null,
+        newValue: `${startTime} - ${endTime}`,
+        action: 'UPDATE',
+        reason: `Updated shift ${id} operating hours`,
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
     }
   };
 
@@ -266,6 +284,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
 
     let error;
+    const isUpdate = !!editingProduct;
+    const oldProduct = isUpdate ? products.find(p => p.id === editingProduct) : null;
+    const targetId = editingProduct || `P${Date.now()}`;
+
     if (editingProduct) {
       const { error: updateError } = await supabase
         .from('products')
@@ -277,7 +299,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         .from('products')
         .insert({
           ...productData,
-          id: `P${Date.now()}`
+          id: targetId
         });
       error = insertError;
     }
@@ -289,6 +311,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     showSuccess(`Product ${newProduct.name} ${editingProduct ? 'updated' : 'added'}.`);
+    logSystemChange({
+      module: 'Products',
+      tableName: 'products',
+      recordId: targetId,
+      fieldChanged: isUpdate ? 'product_spec' : 'all',
+      oldValue: oldProduct ? { bin_qty: oldProduct.binQty, std_pack_size: oldProduct.stdPackSize, batch_id: oldProduct.batchIdentifier } : null,
+      newValue: { bin_qty: newProduct.binQty, std_pack_size: newProduct.stdPackSize, batch_id: newProduct.batchIdentifier },
+      action: isUpdate ? 'UPDATE' : 'CREATE',
+      reason: `${isUpdate ? 'Updated' : 'Created'} product ${newProduct.name}`,
+      changedByName: currentUserName,
+      changedByRole: currentUserRole,
+      changedById: currentUserId,
+    });
     setNewProduct({ name: '', mouldId: '', itemCode: '', batchIdentifier: '', binQty: 4000, stdPackSize: 1000 });
     setEditingProduct(null);
   };
@@ -373,10 +408,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const deleteProduct = async (id: string) => {
+    const existing = products.find(p => p.id === id);
     const { error = null } = await supabase.from('products').delete().eq('id', id);
     if (error) { 
       console.error('Error deleting product:', error); 
       alert(`Cannot delete product: ${error.message}`); 
+    } else {
+      logSystemChange({
+        module: 'Products',
+        tableName: 'products',
+        recordId: id,
+        oldValue: existing?.name,
+        action: 'DELETE',
+        reason: `Deleted product ${existing?.name || id}`,
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
     }
   };
 
@@ -402,12 +450,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const updateUserRole = async (userId: string, newRole: string) => {
+    const targetUser = profiles.find(p => p.id === userId);
+    const oldRole = targetUser?.role;
     const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
     if (error) {
       alert(`Error updating role: ${error.message}`);
     } else {
       showSuccess(`User role updated to ${newRole}`);
       setProfiles(prev => prev.map(p => p.id === userId ? { ...p, role: newRole } : p));
+      logSystemChange({
+        module: 'User Access',
+        tableName: 'profiles',
+        recordId: userId,
+        fieldChanged: 'role',
+        oldValue: oldRole,
+        newValue: newRole,
+        action: 'UPDATE',
+        reason: `Role changed from ${oldRole} to ${newRole} for ${targetUser?.full_name || userId}`,
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
     }
   };
 
@@ -1061,11 +1124,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button 
                 className="btn bpri" 
                 onClick={async () => {
-                  if (!newTask) return;
-                  const { error } = await supabase.from('cleaning_tasks').insert({ id: `C${Date.now()}`, label: newTask });
+                  const taskId = `C${Date.now()}`;
+                  const { error } = await supabase.from('cleaning_tasks').insert({ id: taskId, label: newTask });
                   if (error) showError(error.message);
                   else {
                     showSuccess('Task added');
+                    logSystemChange({
+                      module: 'Cleaning Checklist',
+                      tableName: 'cleaning_tasks',
+                      recordId: taskId,
+                      action: 'CREATE',
+                      newValue: newTask,
+                      reason: `Added startup checklist task: ${newTask}`,
+                      changedByName: currentUserName,
+                      changedByRole: currentUserRole,
+                      changedById: currentUserId,
+                    });
                     setNewTask('');
                   }
                 }}
@@ -1092,9 +1166,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {editingTaskId === t.id ? (
                           <>
                             <button className="btn bsm bpri" onClick={async () => {
+                              const oldLabel = t.label;
                               const { error } = await supabase.from('cleaning_tasks').update({ label: editingTaskLabel }).eq('id', t.id);
                               if (error) showError(error.message);
-                              else { showSuccess('Updated'); setEditingTaskId(null); }
+                              else { 
+                                showSuccess('Updated'); 
+                                logSystemChange({
+                                  module: 'Cleaning Checklist',
+                                  tableName: 'cleaning_tasks',
+                                  recordId: t.id,
+                                  action: 'UPDATE',
+                                  oldValue: oldLabel,
+                                  newValue: editingTaskLabel,
+                                  reason: `Updated checklist task description`,
+                                  changedByName: currentUserName,
+                                  changedByRole: currentUserRole,
+                                  changedById: currentUserId,
+                                });
+                                setEditingTaskId(null); 
+                              }
                             }}>Save</button>
                             <button className="btn bsm bsec" onClick={() => setEditingTaskId(null)}>Cancel</button>
                           </>
@@ -1105,7 +1195,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (!confirm(`Delete task "${t.label}"?`)) return;
                               const { error } = await supabase.from('cleaning_tasks').delete().eq('id', t.id);
                               if (error) showError(error.message);
-                              else showSuccess('Deleted');
+                              else {
+                                showSuccess('Deleted');
+                                logSystemChange({
+                                  module: 'Cleaning Checklist',
+                                  tableName: 'cleaning_tasks',
+                                  recordId: t.id,
+                                  action: 'DELETE',
+                                  oldValue: t.label,
+                                  reason: `Deleted checklist task: ${t.label}`,
+                                  changedByName: currentUserName,
+                                  changedByRole: currentUserRole,
+                                  changedById: currentUserId,
+                                });
+                              }
                             }}><Trash2 size={12}/></button>
                           </>
                         )}

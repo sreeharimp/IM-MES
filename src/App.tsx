@@ -661,7 +661,7 @@ const App: React.FC = () => {
           setActiveTab('Shop Floor');
           return null;
         }
-        return <AdminDashboard machines={machines} operators={operators} moulds={moulds} products={products} rawMaterials={rawMaterials} productMaterials={productMaterials} supervisors={[]} shiftSettings={shiftSettings} defectTypes={defectTypes} breakdownReasons={breakdownReasons} cleaningTasks={cleaningTasks} currentUserRole={profile.role} />;
+        return <AdminDashboard machines={machines} operators={operators} moulds={moulds} products={products} rawMaterials={rawMaterials} productMaterials={productMaterials} supervisors={[]} shiftSettings={shiftSettings} defectTypes={defectTypes} breakdownReasons={breakdownReasons} cleaningTasks={cleaningTasks} currentUserRole={profile.role} currentUserName={profile.fullName} currentUserId={session?.user?.id} />;
       case 'Shift Log': return <ShiftLogPage machines={machines} operators={operators} products={products} moulds={moulds} />;
       case 'Breakdowns': return <BreakdownLogPage machines={machines} />;
       case 'About': return <AboutPage />;

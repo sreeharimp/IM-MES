@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, ChevronLeft, ChevronRight, Activity, Wrench, ArrowLeftRight, X, RefreshCw, User, Package } from 'lucide-react';
+import { Search, Filter, ChevronLeft, ChevronRight, Activity, Wrench, ArrowLeftRight, X, RefreshCw, User, Package, Sliders } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Machine, Operator, Product, Mould } from '../types';
 
-type LogType = 'production' | 'breakdown' | 'handover' | 'personnel' | 'event' | 'crate';
+type LogType = 'production' | 'breakdown' | 'handover' | 'personnel' | 'event' | 'crate' | 'config';
 
 interface UnifiedLog {
   id: string;
@@ -242,6 +242,23 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
       }
     }
 
+    // 6. Operational System Changes (Master Data / Config / Admin updates)
+    const { data: systemChanges } = await supabase.from('system_changes').select('*').order('changed_at', { ascending: false });
+    if (systemChanges) {
+      for (const sc of systemChanges) {
+        unified.push({
+          id: `sys-${sc.id}`,
+          type: 'config',
+          timestamp: sc.changed_at,
+          supervisorName: sc.changed_by_name,
+          summary: `[${sc.module}] ${sc.action}: ${sc.field_changed ? `${sc.field_changed} ` : ''}${sc.record_id ? `(${sc.record_id})` : ''}`,
+          detail: `${sc.changed_by_name} (${sc.changed_by_role || 'User'}) — ${sc.reason || 'Configuration updated'}${sc.old_value || sc.new_value ? ` | ${sc.old_value ? `Old: ${sc.old_value}` : ''}${sc.old_value && sc.new_value ? ' → ' : ''}${sc.new_value ? `New: ${sc.new_value}` : ''}` : ''}${sc.change_request ? ` [${sc.change_request}]` : ''}`,
+          badge: sc.action,
+          badgeColor: sc.action === 'DELETE' ? 'var(--red)' : sc.action === 'CREATE' ? 'var(--green)' : 'var(--purple)',
+        });
+      }
+    }
+
     // Sort all by timestamp descending
     unified.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setLogs(unified);
@@ -258,6 +275,7 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_summaries' }, () => fetchLogs())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_records' }, () => fetchLogs())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'crates' }, () => fetchLogs())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_changes' }, () => fetchLogs())
       .subscribe();
       
     return () => { supabase.removeChannel(ch); };
@@ -308,6 +326,7 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
     if (type === 'breakdown') return <Wrench size={13} color="var(--red)" />;
     if (type === 'handover') return <ArrowLeftRight size={13} color="var(--amber)" />;
     if (type === 'crate') return <Package size={13} color="var(--green)" />;
+    if (type === 'config') return <Sliders size={13} color="var(--purple)" />;
     if (summary?.includes('Operator')) return <User size={13} color="var(--blue)" />;
     return <Activity size={13} color="var(--blue)" />;
   };
@@ -317,6 +336,7 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
     if (type === 'breakdown') return { label: 'Breakdown', color: 'var(--red)', bg: 'var(--red-bg)', border: 'var(--red-dim)' };
     if (type === 'handover') return { label: 'Handover', color: 'var(--amber)', bg: 'var(--amber-bg)', border: 'var(--amber-dim)' };
     if (type === 'crate') return { label: 'Crate', color: 'var(--purple)', bg: 'var(--purple-bg)', border: 'var(--purple-dim)' };
+    if (type === 'config') return { label: 'Config', color: 'var(--purple)', bg: 'var(--purple-bg)', border: 'var(--purple-dim)' };
     if (type === 'personnel') return { label: 'Personnel', color: 'var(--blue)', bg: 'var(--blue-bg)', border: 'var(--blue-dim)' };
     if (summary?.includes('Operator')) return { label: 'Operator', color: 'var(--blue)', bg: 'var(--blue-bg)', border: 'var(--blue-dim)' };
     return { label: 'Event', color: 'var(--blue)', bg: 'var(--blue-bg)', border: 'var(--blue-dim)' };
@@ -384,6 +404,7 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
                 <option value="breakdown">Breakdown</option>
                 <option value="handover">Handover</option>
                 <option value="crate">Crates</option>
+                <option value="config">System Changes</option>
                 <option value="event">System Events</option>
               </select>
             </div>
