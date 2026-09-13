@@ -1118,6 +1118,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+      {/* ── System Info / Version Panel ───────────────────────────── */}
+      <div style={{ marginTop: '32px', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'var(--blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>⚙️</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '14px' }}>IM-MES Platform</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>Industrial Manufacturing Execution System</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>App Version</div>
+              <div style={{
+                fontFamily: 'monospace', fontWeight: 700, fontSize: '15px',
+                color: 'var(--blue)', background: 'var(--blue-dim)',
+                padding: '3px 10px', borderRadius: '6px'
+              }}>
+                v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.3.0'}
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Build Date</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 600, color: 'var(--text2)' }}>
+                {typeof __APP_BUILD_DATE__ !== 'undefined' ? __APP_BUILD_DATE__ : new Date().toISOString().split('T')[0]}
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Backend</div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text2)' }}>Supabase / PostgREST</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Stack</div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text2)' }}>Vite · React · Capacitor</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Satellite apps:</span>
+          {[
+            { label: 'QC Inspector', branch: 'apps/inspector', version: '0.3.0' },
+            { label: 'Packing App', branch: 'apps/packing', version: '1.0.0' },
+          ].map(app => (
+            <span key={app.branch} style={{
+              fontSize: '11px', padding: '2px 8px', borderRadius: '6px',
+              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+              fontFamily: 'monospace', color: 'var(--text2)'
+            }}>
+              {app.label} <span style={{ color: 'var(--blue)' }}>v{app.version}</span>
+              <span style={{ color: 'var(--text3)', marginLeft: '4px' }}>({app.branch})</span>
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text3)' }}>
+            Branch: <code style={{ color: 'var(--purple)', fontFamily: 'monospace' }}>feature/versioning-stage1</code>
+          </span>
+        </div>
+      </div>
     </div>
   );
 };
