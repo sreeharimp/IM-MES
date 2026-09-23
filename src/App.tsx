@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LogOut, Wrench, Factory, History, Cpu, Menu, 
   ChevronLeft, ChevronRight, ScrollText, CheckCircle2, 
-  Play, UserPlus, ClipboardList, Square, AlertCircle, Info, Pencil, X, ShieldCheck, Boxes, LayoutDashboard
+  Play, UserPlus, ClipboardList, Square, AlertCircle, Info, Pencil, X, ShieldCheck, Boxes, LayoutDashboard, CalendarDays
 } from 'lucide-react';
 import type { Machine, MachineStatus, Operator, Product, Mould, RawMaterial, ProductMaterial, Crate, BatchRecord, ShiftSetting, AppSettings, DefectType, BreakdownReason, CleaningTask, Tab } from './types';
 import { DEFAULT_ROLE_PERMISSIONS } from './types';
@@ -27,6 +27,7 @@ import BreakdownLogPage from './components/BreakdownLogPage';
 import BatchLogPage from './components/BatchLogPage';
 import PackingPage from './components/PackingPage';
 import LiveDashboardPage from './components/LiveDashboardPage';
+import { ProductionPlannerModule } from './components/planner/ProductionPlannerModule';
 import AboutPage from './components/AboutPage';
 
 function NavItem({ icon, label, active, onClick }: any) {
@@ -305,7 +306,126 @@ function ChangeRMModal({ machine, products, rawMaterials, productMaterials, batc
   );
 }
 
-function MachineCard({ machine, products, operators, moulds, rawMaterials, batchRecords, onAction, onComplete, onAssign, onResolve, onChangeRM }: any) {
+// ─── Set Current Bin Number Modal ──────────────────────────────────────────
+function EditBinModal({ machine, products, onClose, onConfirm }: any) {
+  const [binNumber, setBinNumber] = useState<number>(machine?.currentBinNumber || 1);
+  const [reason, setReason] = useState<string>('Counter Correction');
+  const [saving, setSaving] = useState(false);
+  const p = products?.find((pr: any) => pr.id === machine?.activeProductId);
+
+  const REASONS = [
+    'Counter Correction',
+    'Skipped Bin Number',
+    'Bin Damaged / Redone',
+    'Shift Handover Alignment',
+    'Physical Audit Sync',
+    'Other'
+  ];
+
+  return (
+    <div className="ov animate-fade-in" onClick={onClose} style={{ alignItems: 'flex-start', padding: '10px', paddingTop: 'max(10px, env(safe-area-inset-top, 10px))' }}>
+      <div 
+        className="modal animate-scale-in" 
+        style={{ 
+          width: '100%', 
+          maxWidth: '380px', 
+          margin: '0 auto', 
+          borderRadius: '16px',
+          overflow: 'hidden'
+        }} 
+        onClick={(e: any) => e.stopPropagation()}
+      >
+        <div className="mhd" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="mtit" style={{ fontSize: '15px' }}>Set Current Bin Number</div>
+            <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '2px' }}>
+              Machine: {machine.id} {p?.name ? `• ${p.name}` : ''}
+            </div>
+          </div>
+          <button className="mcl" onClick={onClose} disabled={saving}><X size={18} /></button>
+        </div>
+
+        <div className="mbd" style={{ padding: '18px 16px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '6px' }}>
+              Active Batch: <strong style={{ color: 'var(--text)' }}>{machine.activeBatchId || 'None'}</strong>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', margin: '10px 0' }}>
+              <button 
+                type="button" 
+                className="btn bsec" 
+                style={{ width: '40px', height: '40px', fontSize: '20px', padding: 0, borderRadius: '8px' }}
+                onClick={() => setBinNumber((prev: number) => Math.max(1, prev - 1))}
+              >
+                -
+              </button>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: 'var(--text3)', fontSize: '18px' }}>#</span>
+                <input 
+                  type="number" 
+                  min={1} 
+                  max={9999}
+                  className="fi" 
+                  value={binNumber} 
+                  onChange={(e) => setBinNumber(Math.max(1, parseInt(e.target.value) || 1))}
+                  style={{ width: '130px', textAlign: 'center', fontSize: '24px', fontWeight: 800, fontFamily: 'var(--mono)', paddingLeft: '28px', height: '48px', borderRadius: '8px' }}
+                />
+              </div>
+              <button 
+                type="button" 
+                className="btn bsec" 
+                style={{ width: '40px', height: '40px', fontSize: '20px', padding: 0, borderRadius: '8px' }}
+                onClick={() => setBinNumber((prev: number) => prev + 1)}
+              >
+                +
+              </button>
+            </div>
+            <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '4px' }}>
+              Next produced bin slip will be: <strong style={{ color: '#2563eb' }}>{machine.activeBatchId || 'BATCH'}-{machine.id}-{binNumber}</strong>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '10.5px', fontWeight: 600, color: 'var(--text2)', marginBottom: '6px' }}>
+              Reason for Adjustment
+            </label>
+            <select 
+              className="fi" 
+              value={reason} 
+              onChange={(e) => setReason(e.target.value)}
+              style={{ width: '100%', fontSize: '12px', padding: '8px 10px', borderRadius: '6px' }}
+            >
+              {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn bsec" style={{ flex: 1 }} onClick={onClose} disabled={saving}>
+              Cancel
+            </button>
+            <button 
+              className="btn bpri" 
+              style={{ flex: 2, background: '#2563eb', borderColor: '#1d4ed8' }} 
+              disabled={saving || !binNumber || binNumber < 1}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await onConfirm(binNumber, reason);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? 'Updating...' : 'Save Bin Number'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MachineCard({ machine, products, operators, moulds, rawMaterials, batchRecords, onAction, onComplete, onAssign, onResolve, onChangeRM, onEditBin }: any) {
   const p = products.find((pr: any) => pr.id === machine.activeProductId);
   const o = operators.find((op: any) => op.id === machine.currentOperatorId);
   const mld = moulds.find((m: any) => m.id === machine.currentMouldId);
@@ -442,7 +562,30 @@ function MachineCard({ machine, products, operators, moulds, rawMaterials, batch
         {/* ── Slot 3: Primary Metric (Bin fill) ── */}
         <div style={{ marginBottom: '4px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
-            <span style={{ fontSize: '7px', color: '#64748b', fontWeight: 500 }}>Bin fill</span>
+            <span style={{ fontSize: '7px', color: '#64748b', fontWeight: 500 }}>
+              Bin fill {machine.status === 'Running' && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onEditBin ? onEditBin(machine.id) : onAction(machine.id, 'EditBin'); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0 0 0 3px',
+                    color: '#2563eb',
+                    fontSize: '7px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '2px'
+                  }}
+                  title="Click to edit current bin number"
+                >
+                  (Bin #{machine.currentBinNumber || 1} <Pencil size={6} />)
+                </button>
+              )}
+            </span>
             <span style={{ fontSize: '9px', fontFamily: 'var(--mono)' }}>
               <strong style={{ color: '#0f172a', fontWeight: 700, fontSize: '9.5px' }}>
                 {machine.status === 'Running' ? estCount.toLocaleString() : '—'}
@@ -473,9 +616,21 @@ function MachineCard({ machine, products, operators, moulds, rawMaterials, batch
           borderTop: '1px solid #f1f5f9', 
           borderBottom: '1px solid #f1f5f9' 
         }}>
-          <div style={{ textAlign: 'center', borderRight: '1px solid #f1f5f9', padding: '0 2px' }}>
-            <div style={{ fontSize: '6.5px', color: '#64748b', fontWeight: 500 }}>Bin</div>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#0f172a', marginTop: '1px', fontFamily: 'var(--mono)' }}>
+          <div 
+            style={{ 
+              textAlign: 'center', 
+              borderRight: '1px solid #f1f5f9', 
+              padding: '0 2px',
+              cursor: machine.status === 'Running' ? 'pointer' : 'default',
+              userSelect: 'none'
+            }}
+            onClick={() => machine.status === 'Running' && (onEditBin ? onEditBin(machine.id) : onAction(machine.id, 'EditBin'))}
+            title={machine.status === 'Running' ? "Click to set current bin number" : undefined}
+          >
+            <div style={{ fontSize: '6.5px', color: '#64748b', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+              Bin {machine.status === 'Running' && <Pencil size={6} style={{ color: '#2563eb' }} />}
+            </div>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#0f172a', marginTop: '1px', fontFamily: 'var(--mono)', textDecoration: machine.status === 'Running' ? 'underline' : 'none', textDecorationColor: '#93c5fd' }}>
               {machine.status === 'Running' ? `#${machine.currentBinNumber || 1}` : '—'}
             </div>
           </div>
@@ -778,6 +933,7 @@ const App: React.FC = () => {
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [productMaterials, setProductMaterials] = useState<ProductMaterial[]>([]);
   const [changingRMMachineId, setChangingRMMachineId] = useState<string | null>(null);
+  const [editingBinMachineId, setEditingBinMachineId] = useState<string | null>(null);
   const [batchRecords, setBatchRecords] = useState<BatchRecord[]>([]);
   const [defectTypes, setDefectTypes] = useState<DefectType[]>([]);
   const [breakdownReasons, setBreakdownReasons] = useState<BreakdownReason[]>([]);
@@ -787,7 +943,12 @@ const App: React.FC = () => {
   const userPermissions: Tab[] = React.useMemo(() => {
     const role = profile?.role || 'Supervisor';
     const permissionsMap = appSettings?.role_permissions || appSettings?.printLabels?.role_permissions || DEFAULT_ROLE_PERMISSIONS;
-    return permissionsMap[role] || DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.Supervisor;
+    const basePermissions: Tab[] = [...(permissionsMap[role] || DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.Supervisor)];
+    // Always ensure Production Planner is available unless role is QC
+    if (role !== 'QC' && !basePermissions.includes('Production Planner')) {
+      basePermissions.splice(2, 0, 'Production Planner');
+    }
+    return basePermissions;
   }, [profile?.role, appSettings?.role_permissions, appSettings?.printLabels]);
 
   // If user does not have permission for the currently active tab, redirect to their first permitted tab
@@ -1087,6 +1248,9 @@ const App: React.FC = () => {
     else if (action === 'Stop') {
       setPendingAction({ type: 'status', data: { machineId: mid, nextStatus: 'Idle' } });
     }
+    else if (action === 'EditBin') {
+      setEditingBinMachineId(mid);
+    }
     else if (action === 'Unload') {
       const prevM = machines.find(m => m.id === mid);
       const prevP = products.find(p => p.id === prevM?.activeProductId);
@@ -1200,8 +1364,8 @@ const App: React.FC = () => {
       absBatchId = currentBatchId;
       bNo = 1;
     } else {
-      // Not a rollover, use batch-wide count plus one
-      bNo = (latestBatch?.crates || 0) + 1;
+      // Use data.binNumber if provided (e.g. from modal edit), else machine's current_bin_number, else batch count + 1
+      bNo = data.binNumber || latestMachine.current_bin_number || (latestBatch?.crates || 0) + 1;
     }
 
     // Bin Identification: ensure machine ID is not duplicated if absBatchId already ends with it
@@ -1310,9 +1474,9 @@ const App: React.FC = () => {
   };
 
   const handleOpenBinComplete = async (mid: string) => {
-    // Sync with global batch count before opening
+    // Sync with global batch count before opening only if machine has no current_bin_number set
     const m = machines.find(ma => ma.id === mid);
-    if (m && m.activeBatchId) {
+    if (m && m.activeBatchId && !m.currentBinNumber) {
       const { data: latestBatch } = await supabase.from('batch_records').select('crates').eq('id', m.activeBatchId).maybeSingle();
       if (latestBatch) {
         const nextBin = (latestBatch.crates || 0) + 1;
@@ -1338,6 +1502,7 @@ const App: React.FC = () => {
             shiftSettings={shiftSettings} 
             currentUserRole={profile?.role} 
             currentSupervisorName={profile?.fullName} 
+            onEditBin={isViewOnly ? undefined : (mid: string) => setEditingBinMachineId(mid)}
           />
         );
       case 'Shop Floor':
@@ -1345,9 +1510,39 @@ const App: React.FC = () => {
           <div className="animate-fade-in">
             <div className="mach-grid">
               {machines.map(m => (
-                <MachineCard key={m.id} machine={m} products={products} operators={operators} moulds={moulds} rawMaterials={rawMaterials} productMaterials={productMaterials} batchRecords={batchRecords} onAction={isViewOnly ? () => {} : handleAction} onComplete={isViewOnly ? () => {} : handleOpenBinComplete} onAssign={isViewOnly ? () => {} : () => setAssigningOperatorMachineId(m.id)} onResolve={isViewOnly ? () => {} : () => setResolvingMachineId(m.id)} onChangeRM={isViewOnly ? () => {} : () => setChangingRMMachineId(m.id)} />
+                <MachineCard 
+                  key={m.id} 
+                  machine={m} 
+                  products={products} 
+                  operators={operators} 
+                  moulds={moulds} 
+                  rawMaterials={rawMaterials} 
+                  productMaterials={productMaterials} 
+                  batchRecords={batchRecords} 
+                  onAction={isViewOnly ? () => {} : handleAction} 
+                  onComplete={isViewOnly ? () => {} : handleOpenBinComplete} 
+                  onAssign={isViewOnly ? () => {} : () => setAssigningOperatorMachineId(m.id)} 
+                  onResolve={isViewOnly ? () => {} : () => setResolvingMachineId(m.id)} 
+                  onChangeRM={isViewOnly ? () => {} : () => setChangingRMMachineId(m.id)} 
+                  onEditBin={isViewOnly ? () => {} : (mid: string) => setEditingBinMachineId(mid)}
+                />
               ))}
             </div>
+          </div>
+        );
+      case 'Production Planner':
+        return (
+          <div className="animate-fade-in" style={{ marginBottom: '24px' }}>
+            <ProductionPlannerModule
+              currentUser={{
+                id: session?.user?.id || '',
+                name: profile?.fullName || 'Supervisor',
+                email: profile?.email || '',
+                role: profile?.role || 'Supervisor',
+              }}
+              products={products}
+              machines={machines}
+            />
           </div>
         );
       case 'Inspections': return <InspectionPage pendingCrates={pendingCrates} machines={machines} products={products} batchRecords={batchRecords} operators={operators} onStartInspection={setInspectingBin} />;
@@ -1567,6 +1762,9 @@ const App: React.FC = () => {
             {userPermissions.includes('Shop Floor') && (
               <NavItem icon={<Factory size={16}/>} label="Shop Floor" active={activeTab==='Shop Floor'} onClick={()=>{setActiveTab('Shop Floor'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
+            {(userPermissions.includes('Production Planner') || profile?.role !== 'QC') && (
+              <NavItem icon={<CalendarDays size={16}/>} label="Production Planner" active={activeTab==='Production Planner'} onClick={()=>{setActiveTab('Production Planner'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
+            )}
             {userPermissions.includes('Inspections') && (
               <NavItem icon={<ClipboardList size={16}/>} label="Inspections" active={activeTab==='Inspections'} onClick={()=>{setActiveTab('Inspections'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
@@ -1658,6 +1856,12 @@ const App: React.FC = () => {
           <div className={`bn-item ${activeTab === 'Shop Floor' ? 'active' : ''}`} onClick={() => setActiveTab('Shop Floor')}>
             <Factory size={20} />
             <span>Shop Floor</span>
+          </div>
+        )}
+        {userPermissions.includes('Production Planner') && (
+          <div className={`bn-item ${activeTab === 'Production Planner' ? 'active' : ''}`} onClick={() => setActiveTab('Production Planner')}>
+            <CalendarDays size={20} />
+            <span>Planner</span>
           </div>
         )}
         {userPermissions.includes('Inspections') && (
@@ -1963,6 +2167,35 @@ const App: React.FC = () => {
             const logDetails = `RM Traceability: [${oldMaterialName || 'None'} (Lot: ${oldBatch || 'None'})] ➔ [${gradeName} (Lot: ${materialBatch})] | Reason: ${reason} | Prod: ${p?.name || '—'} (${p?.itemCode || '—'}) | Batch: ${m?.activeBatchId || '—'} | Bin #${m?.currentBinNumber || 1}`;
             await addLogEntry(changingRMMachineId, 'RM Batch Changed', logDetails, m?.currentOperatorId || undefined);
             setChangingRMMachineId(null);
+          }}
+        />
+      )}
+
+      {editingBinMachineId && (
+        <EditBinModal
+          machine={machines.find(m => m.id === editingBinMachineId)}
+          products={products}
+          onClose={() => setEditingBinMachineId(null)}
+          onConfirm={async (newBin: number, reason: string) => {
+            const m = machines.find(mach => mach.id === editingBinMachineId);
+            if (!m) return;
+            const oldBin = m.currentBinNumber || 1;
+
+            await supabase.from('machines').update({ current_bin_number: newBin }).eq('id', editingBinMachineId);
+
+            if (m.activeBatchId) {
+              const syncCrates = Math.max(0, newBin - 1);
+              await supabase.from('batch_records').update({ crates: syncCrates }).eq('id', m.activeBatchId);
+              setBatchRecords(prev => prev.map(b => b.id === m.activeBatchId ? { ...b, crates: syncCrates } : b));
+            }
+
+            setMachines(prev => prev.map(mach => mach.id === editingBinMachineId ? { ...mach, currentBinNumber: newBin } : mach));
+
+            const p = products.find(pr => pr.id === m.activeProductId);
+            const logDetails = `Bin Counter Adjustment: #${oldBin} ➔ #${newBin} | Reason: ${reason} | Prod: ${p?.name || '—'} | Batch: ${m.activeBatchId || '—'}`;
+            await addLogEntry(editingBinMachineId, 'Bin Number Changed', logDetails, m.currentOperatorId || undefined);
+
+            setEditingBinMachineId(null);
           }}
         />
       )}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Printer } from 'lucide-react';
+import { X, Printer, Pencil } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Machine, AppSettings } from '../types';
 import { formatDateDMY } from '../utils/printService';
@@ -18,7 +18,7 @@ interface BinCompleteModalProps {
   appSettings?: AppSettings | null;
   defaultBinQty?: number;
   onClose: () => void;
-  onConfirm: (data: { grossQty: number, startupScrap: number, qcSample: number, netQty: number }) => Promise<boolean>;
+  onConfirm: (data: { grossQty: number, startupScrap: number, qcSample: number, netQty: number, binNumber?: number }) => Promise<boolean>;
 }
 
 const BinCompleteModal: React.FC<BinCompleteModalProps> = ({ 
@@ -36,6 +36,8 @@ const BinCompleteModal: React.FC<BinCompleteModalProps> = ({
   onClose, 
   onConfirm 
 }) => {
+  const [activeBinNum, setActiveBinNum] = useState<number>(binNumber);
+  const [isEditingBin, setIsEditingBin] = useState(false);
   const [grossQty, setGrossQty] = useState<number | string>(machine.binTarget || defaultBinQty || 4000);
   const [startupScrap, setStartupScrap] = useState<number | string>("");
   const [qcSample, setQcSample] = useState<number | string>("");
@@ -49,14 +51,14 @@ const BinCompleteModal: React.FC<BinCompleteModalProps> = ({
   
   const rawBatch = machine.activeBatchId || 'BATCH';
   const cleanBatch = rawBatch.endsWith(`-${machine.id}`) ? rawBatch : `${rawBatch}-${machine.id}`;
-  const unitId = formatUnitId(`${cleanBatch}-${binNumber}`, machine.id);
+  const unitId = formatUnitId(`${cleanBatch}-${activeBinNum}`, machine.id);
 
   const handleConfirm = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     
     try {
-      const success = await onConfirm({ grossQty: grossNum, startupScrap: scrapNum, qcSample: qcNum, netQty });
+      const success = await onConfirm({ grossQty: grossNum, startupScrap: scrapNum, qcSample: qcNum, netQty, binNumber: activeBinNum });
       if (!success) {
         setIsSubmitting(false);
       }
@@ -92,13 +94,56 @@ const BinCompleteModal: React.FC<BinCompleteModalProps> = ({
         <div className="modal animate-scale-in" style={{ display: 'flex', flexDirection: 'column', maxHeight: '95vh', maxWidth: '400px', position: 'relative', bottom: 'auto', top: '0', margin: '0 auto', borderRadius: '16px' }}>
           <div className="mhd" style={{ padding: '12px 16px 8px' }}>
             <div>
-              <div className="mtit" style={{ fontSize: '16px' }}>Complete Bin #{binNumber}</div>
+              <div className="mtit" style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Complete Bin #{activeBinNum}
+                <button
+                  type="button"
+                  onClick={() => setIsEditingBin(prev => !prev)}
+                  style={{
+                    background: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '4px',
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: '#2563eb',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px'
+                  }}
+                  title="Click to adjust bin number"
+                >
+                  <Pencil size={10} /> Edit Bin #
+                </button>
+              </div>
               <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '2px' }}>{machine.name} • {machine.model}</div>
             </div>
             <button onClick={onClose} className="mcl" disabled={isSubmitting}>
               <X size={18} />
             </button>
           </div>
+
+          {isEditingBin && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#1e40af' }}>Adjust Bin #:</span>
+              <input 
+                type="number" 
+                min={1} 
+                value={activeBinNum} 
+                onChange={(e) => setActiveBinNum(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ width: '70px', padding: '2px 6px', fontSize: '13px', fontWeight: 700, borderRadius: '4px', border: '1px solid #93c5fd', textAlign: 'center' }}
+                autoFocus
+              />
+              <button 
+                type="button" 
+                onClick={() => setIsEditingBin(false)}
+                style={{ fontSize: '10.5px', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '4px', padding: '3px 10px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Set
+              </button>
+            </div>
+          )}
   
           <div className="mbd" style={{ flex: 1, overflowY: 'auto', padding: '0 16px 70px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
@@ -181,7 +226,7 @@ const BinCompleteModal: React.FC<BinCompleteModalProps> = ({
   
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: 'bold' }}>
                   <span>{labelBatch}: {(machine.activeBatchId || '').split('-')[0]}</span>
-                  <span>{labelBin}: #{binNumber}</span>
+                  <span>{labelBin}: #{activeBinNum}</span>
                 </div>
   
                 <div style={{ fontSize: '11px', marginBottom: '2px' }}>

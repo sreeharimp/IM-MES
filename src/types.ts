@@ -189,14 +189,14 @@ export interface ShiftSetting {
   endTime: string;   // '14:00'
 }
 
-export type Tab = 'Live Dashboard' | 'Shop Floor' | 'Inspections' | 'Batch Log' | 'Shift Log' | 'Breakdowns' | 'Packing' | 'Machines' | 'About';
+export type Tab = 'Live Dashboard' | 'Shop Floor' | 'Production Planner' | 'Inspections' | 'Batch Log' | 'Shift Log' | 'Breakdowns' | 'Packing' | 'Machines' | 'About';
 
 export type RolePermissions = Record<string, Tab[]>;
 
 export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
-  Admin: ['Live Dashboard', 'Shop Floor', 'Inspections', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Machines', 'About'],
-  PowerUser: ['Live Dashboard', 'Shop Floor', 'Inspections', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Machines', 'About'],
-  Supervisor: ['Live Dashboard', 'Shop Floor', 'Inspections', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'About'],
+  Admin: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Machines', 'About'],
+  PowerUser: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Machines', 'About'],
+  Supervisor: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'About'],
   QC: ['Live Dashboard', 'Batch Log', 'Shift Log', 'Packing', 'Inspections', 'About'],
 };
 
