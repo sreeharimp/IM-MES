@@ -74,3 +74,51 @@ export function parseBatchId(batchId: string): { company: string; product: strin
   const day = afterProduct.slice(3);            // 29
   return { company, product, year, month, day };
 }
+
+/**
+ * Ensures Unit ID does not contain repeated machine IDs or duplicate segments.
+ * e.g., APBT26I12-IMM-A-IMM-A-8 -> APBT26I12-IMM-A-8
+ */
+export function formatUnitId(unitId: string, machineId?: string): string {
+  if (!unitId) return '';
+  if (machineId) {
+    const escaped = machineId.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`-${escaped}-${escaped}-`, 'g');
+    unitId = unitId.replace(regex, `-${machineId}-`);
+  }
+  const parts = unitId.split('-');
+  for (let len = 1; len <= 3; len++) {
+    for (let i = 0; i + len * 2 <= parts.length; i++) {
+      const slice1 = parts.slice(i, i + len).join('-');
+      const slice2 = parts.slice(i + len, i + len * 2).join('-');
+      if (slice1 === slice2 && slice1.length > 0) {
+        parts.splice(i + len, len);
+        return parts.join('-');
+      }
+    }
+  }
+  return unitId;
+}
+
+/**
+ * Parse a scanned unit ID back into its component parts.
+ * Format: {batchId}-{machineId}-{binNumber}
+ * e.g., APBT26I12-IMM-A-8 → { batchId: 'APBT26I12', machineId: 'IMM-A', binNumber: 8, raw: '...' }
+ */
+export function parseScannedUnitId(unitId: string): { batchId: string; machineId: string; binNumber: number; raw: string } | null {
+  if (!unitId || typeof unitId !== 'string') return null;
+  const trimmed = unitId.trim();
+  // Last segment after final '-' is the bin number (if numeric)
+  const lastDash = trimmed.lastIndexOf('-');
+  if (lastDash === -1) return null;
+  const lastPart = trimmed.slice(lastDash + 1);
+  const binNumber = parseInt(lastPart, 10);
+  if (isNaN(binNumber)) return null;
+  const withoutBin = trimmed.slice(0, lastDash);
+  // First 8-10 chars (up to first '-') is the batch ID
+  const firstDash = withoutBin.indexOf('-');
+  if (firstDash === -1) return null;
+  const batchId = withoutBin.slice(0, firstDash);
+  const machineId = withoutBin.slice(firstDash + 1);
+  return { batchId, machineId, binNumber, raw: trimmed };
+}

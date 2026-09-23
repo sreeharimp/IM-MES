@@ -4,7 +4,9 @@ import {
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { QRCodeSVG } from 'qrcode.react';
-import type { Machine, Product, Crate, BatchRecord, Operator } from '../types';
+import type { Machine, Product, Crate, BatchRecord, Operator, AppSettings } from '../types';
+import { printProductionSlip, formatDateDMY } from '../utils/printService';
+import { resolveSupervisorName } from '../utils/supervisorUtils';
 
 interface InspectionPageProps {
   pendingCrates: Crate[];
@@ -12,6 +14,8 @@ interface InspectionPageProps {
   products: Product[];
   batchRecords: BatchRecord[];
   operators: Operator[];
+  supervisors?: Array<{ id: string; full_name?: string; email?: string }>;
+  appSettings?: AppSettings | null;
   onStartInspection: (crate: { id: string, netQty: number, machineId: string }) => void;
 }
 
@@ -21,6 +25,8 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   products,
   batchRecords,
   operators,
+  supervisors = [],
+  appSettings,
   onStartInspection 
 }) => {
   const [filterMachineId, setFilterMachineId] = useState('');
@@ -30,10 +36,35 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [reprintCrate, setReprintCrate] = useState<Crate | null>(null);
 
-  const handleReprint = (crate: Crate) => {
+  const handleReprint = async (crate: Crate) => {
     setReprintCrate(crate);
-    setTimeout(() => {
+    const resolvedSupervisor = resolveSupervisorName(crate.supervisorId, supervisors, appSettings?.activeSupervisorName);
+    const batch = batchRecords.find(b => b.id === crate.batchId);
+    const prod = products.find(p => p.id === batch?.productId || p.name === batch?.productName);
+    const productName = batch?.productName || prod?.name || 'N/A';
+    const operator = operators.find(o => o.id === crate.operatorId);
+    const machine = machines.find(m => m.id === crate.machineId) || { id: crate.machineId } as Machine;
+    const rmName = batch?.materialGrade || (crate as any).materialGrade || (crate as any).material_grade || 'N/A';
+    const rmBatch = crate.materialBatch || (crate as any).material_batch || batch?.materialBatch || 'N/A';
+
+    try {
+      await printProductionSlip(
+        crate,
+        machine,
+        operator?.name,
+        true,
+        productName,
+        resolvedSupervisor,
+        appSettings?.printLabels,
+        rmName,
+        rmBatch
+      );
+    } catch (e) {
+      console.warn('Reprint slip print error, fallback to browser print:', e);
       window.print();
+    }
+
+    setTimeout(() => {
       setReprintCrate(null);
     }, 500);
   };
@@ -332,11 +363,27 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
                   <span>{reprintCrate.shiftId || 'N/A'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Product:</span>
+                  <span style={{ fontWeight: 600 }}>{batchRecords.find(b => b.id === reprintCrate.batchId)?.productName || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Raw Material:</span>
+                  <span>{batchRecords.find(b => b.id === reprintCrate.batchId)?.materialGrade || (reprintCrate as any).materialGrade || (reprintCrate as any).material_grade || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>RM Lot / Batch:</span>
+                  <span style={{ fontWeight: 600 }}>{reprintCrate.materialBatch || (reprintCrate as any).material_batch || batchRecords.find(b => b.id === reprintCrate.batchId)?.materialBatch || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                   <span>Operator:</span>
                   <span>
                     {operators.find(o => o.id === reprintCrate.operatorId)?.name || 'UNASSIGNED'} 
                     {operators.find(o => o.id === reprintCrate.operatorId)?.employeeId && ` (${operators.find(o => o.id === reprintCrate.operatorId)?.employeeId})`}
                   </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Supervisor:</span>
+                  <span style={{ fontWeight: 600 }}>{resolveSupervisorName(reprintCrate.supervisorId, supervisors, appSettings?.activeSupervisorName)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                   <span>Machine ID:</span>
