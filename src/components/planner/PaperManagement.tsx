@@ -168,6 +168,21 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
     setIsModalOpen(true);
   };
 
+  const handleToggleStatus = async (paper: LabelPaperType, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const nextActive = !paper.active;
+      const { error } = await supabase
+        .from('label_paper_types')
+        .update({ active: nextActive })
+        .eq('id', paper.id);
+      if (error) throw error;
+      await fetchPapers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update status.');
+    }
+  };
+
   const handleDeletePaper = async (paper: LabelPaperType, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!window.confirm(`Are you sure you want to delete paper format "${paper.name}"?`)) {
@@ -191,7 +206,26 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
       }
       await fetchPapers();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete paper format. It may be linked to existing printed labels.');
+      const isFkError =
+        err?.code === '23503' ||
+        err?.message?.includes('foreign key constraint') ||
+        err?.message?.includes('label_print_jobs');
+
+      if (isFkError) {
+        const shouldDeactivate = window.confirm(
+          `Paper format "${paper.name}" is linked to existing print job history or product configurations, so it cannot be permanently deleted without breaking historical records.\n\nWould you like to deactivate it instead? (It will be hidden from new print jobs while preserving all logs).`
+        );
+        if (shouldDeactivate) {
+          try {
+            await supabase.from('label_paper_types').update({ active: false }).eq('id', paper.id);
+            await fetchPapers();
+          } catch (deactErr: any) {
+            alert('Failed to deactivate format: ' + deactErr.message);
+          }
+        }
+      } else {
+        alert(err.message || 'Failed to delete paper format. It may be linked to existing printed labels.');
+      }
     }
   };
 
@@ -424,13 +458,16 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
                           : `${p.internal_padding_mm ?? 1.8} mm`}
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          label={p.active ? 'Active' : 'Inactive'}
-                          color={p.active ? 'success' : 'default'}
-                          variant="outlined"
-                          sx={{ height: 22, fontSize: '0.75rem' }}
-                        />
+                        <Tooltip title={canEdit ? `Click to ${p.active ? 'deactivate' : 'activate'}` : ''}>
+                          <Chip
+                            size="small"
+                            label={p.active ? 'Active' : 'Inactive'}
+                            color={p.active ? 'success' : 'default'}
+                            variant="outlined"
+                            onClick={canEdit ? (e) => handleToggleStatus(p, e) : undefined}
+                            sx={{ height: 22, fontSize: '0.75rem', cursor: canEdit ? 'pointer' : 'default' }}
+                          />
+                        </Tooltip>
                       </TableCell>
                       <TableCell align="center">
                         <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>

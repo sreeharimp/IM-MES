@@ -21,3 +21,11 @@ COMMENT ON COLUMN label_paper_types.padding_top_mm IS 'Optional individual top p
 COMMENT ON COLUMN label_paper_types.padding_left_mm IS 'Optional individual left padding override (mm)';
 COMMENT ON COLUMN label_paper_types.padding_right_mm IS 'Optional individual right padding override (mm)';
 COMMENT ON COLUMN label_paper_types.padding_bottom_mm IS 'Optional individual bottom padding override (mm)';
+
+-- ── Fix Foreign Key on label_print_jobs ─────────────────────────────────────────
+-- Allows deleting or archiving paper types without violating print job history
+ALTER TABLE IF EXISTS label_print_jobs
+  DROP CONSTRAINT IF EXISTS label_print_jobs_label_paper_type_id_fkey,
+  ADD CONSTRAINT label_print_jobs_label_paper_type_id_fkey
+    FOREIGN KEY (label_paper_type_id) REFERENCES label_paper_types(id) ON DELETE SET NULL;
+
