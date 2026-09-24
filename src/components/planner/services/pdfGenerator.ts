@@ -185,14 +185,19 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       doc.rect(x, y, lW, lH);
 
       // Inner padding
-      const pad = 1.8;
-      const contentX = x + pad;
-      const contentY = y + pad;
-      const contentW = lW - pad * 2;
+      const padTop = Number(paper.padding_top_mm ?? paper.internal_padding_mm ?? 1.8);
+      const padLeft = Number(paper.padding_left_mm ?? paper.internal_padding_mm ?? 1.8);
+      const padRight = Number(paper.padding_right_mm ?? paper.internal_padding_mm ?? 1.8);
+      const padBottom = Number(paper.padding_bottom_mm ?? paper.internal_padding_mm ?? 1.8);
+
+      const contentX = x + padLeft;
+      const contentY = y + padTop;
+      const contentW = Math.max(10, lW - (padLeft + padRight));
+      const contentH = Math.max(10, lH - (padTop + padBottom));
 
       // 1. Header: Company Name
       doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(6.8);
+      doc.setFontSize(Math.min(6.8, Math.max(5, contentW / 8)));
       doc.setTextColor(30, 41, 59);
       doc.text('AGNEY POLYSOFT INDIA PVT LTD', contentX, contentY + 2.5);
 
@@ -202,7 +207,7 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
 
       // 2. Product Name
       doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(7.5);
+      doc.setFontSize(Math.min(7.5, Math.max(5.5, contentW / 7)));
       doc.setTextColor(15, 23, 42);
       const pName = label.productName || 'Moulded Part';
       const truncatedName = pName.length > 24 ? pName.substring(0, 22) + '..' : pName;
@@ -231,15 +236,15 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(5.5);
       doc.setTextColor(71, 85, 105);
-      const qcY = y + lH - 4.2;
+      const qcY = y + lH - padBottom - 1.5;
       doc.setDrawColor(100, 116, 139);
-      doc.rect(contentX, qcY - 2.8, 2.8, 2.8);
-      doc.text('QC APPROVED', contentX + 3.6, qcY - 0.7);
-      doc.text('Sign: ____________', contentX, y + lH - 1.5);
+      doc.rect(contentX, Math.max(contentY + 18, qcY - 2.8), 2.8, 2.8);
+      doc.text('QC APPROVED', contentX + 3.6, Math.max(contentY + 18, qcY - 0.7));
+      doc.text('Sign: ____________', contentX, y + lH - padBottom);
 
       // 6. QR Code (QR payload format: batch_code-case_number)
-      const qrSize = Math.min(16.5, lH - 9);
-      const qrX = x + lW - qrSize - 2;
+      const qrSize = Math.max(8, Math.min(16.5, contentH - 4.5, lW - 35));
+      const qrX = x + lW - padRight - qrSize;
       const qrY = contentY + 4.5;
       const qrDataUrl = qrMap.get(label.id);
       if (qrDataUrl) {
@@ -323,18 +328,30 @@ export function buildCalibrationPDFDoc(paper: LabelPaperType): jsPDF {
     Math.max(5, mT - 2)
   );
 
+  const padTop = Number(paper.padding_top_mm ?? paper.internal_padding_mm ?? 1.8);
+  const padLeft = Number(paper.padding_left_mm ?? paper.internal_padding_mm ?? 1.8);
+  const padRight = Number(paper.padding_right_mm ?? paper.internal_padding_mm ?? 1.8);
+  const padBottom = Number(paper.padding_bottom_mm ?? paper.internal_padding_mm ?? 1.8);
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = mL + c * (lW + gX);
       const y = mT + r * (lH + gY);
 
+      // Outer die-cut edge
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.2);
       doc.rect(x, y, lW, lH);
 
-      doc.setDrawColor(180, 180, 180);
-      doc.setLineWidth(0.1);
-      doc.rect(x + 1.5, y + 1.5, lW - 3, lH - 3);
+      // Inner padding / printable boundary
+      doc.setDrawColor(14, 165, 233);
+      doc.setLineWidth(0.12);
+      doc.rect(
+        x + padLeft,
+        y + padTop,
+        Math.max(1, lW - (padLeft + padRight)),
+        Math.max(1, lH - (padTop + padBottom))
+      );
 
       const cx = x + lW / 2;
       const cy = y + lH / 2;
@@ -345,9 +362,9 @@ export function buildCalibrationPDFDoc(paper: LabelPaperType): jsPDF {
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(6);
       doc.setTextColor(71, 85, 105);
-      doc.text(`R${r + 1} C${c + 1}`, x + 2.5, y + 5);
-      doc.text(`${lW} x ${lH} mm`, x + 2.5, y + 8.5);
-      doc.text(`X: ${x.toFixed(1)} Y: ${y.toFixed(1)}`, x + 2.5, y + 12);
+      doc.text(`R${r + 1} C${c + 1}`, x + padLeft + 1.5, y + padTop + 4);
+      doc.text(`${lW} x ${lH} mm`, x + padLeft + 1.5, y + padTop + 7.5);
+      doc.text(`Pad: ${padTop}/${padLeft}mm`, x + padLeft + 1.5, y + padTop + 11);
     }
   }
 

@@ -57,6 +57,11 @@ const DEFAULT_FORM_DATA: Partial<LabelPaperType> = {
   gutter_y_mm: 0,
   fill_order: 'row-major',
   active: true,
+  internal_padding_mm: 1.8,
+  padding_top_mm: 1.8,
+  padding_left_mm: 1.8,
+  padding_right_mm: 1.8,
+  padding_bottom_mm: 1.8,
 };
 
 export const PaperManagement: React.FC<PaperManagementProps> = ({
@@ -70,6 +75,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
   const [calibrationPaper, setCalibrationPaper] = useState<LabelPaperType | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
+  const [showAdvancedPadding, setShowAdvancedPadding] = useState<boolean>(false);
   const [formData, setFormData] = useState<Partial<LabelPaperType>>(DEFAULT_FORM_DATA);
 
   const canEdit = currentUserRole === 'Admin' || currentUserRole === 'PowerUser';
@@ -82,12 +88,28 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
         .order('name', { ascending: true });
 
       if (error) throw error;
-      const loaded = data || [];
+      const loaded: LabelPaperType[] = (data || []).map((p: any) => {
+        let localPad: any = null;
+        try {
+          const saved = localStorage.getItem(`paper_pad_${p.id}`);
+          if (saved) localPad = JSON.parse(saved);
+        } catch (_) {}
+
+        const intPad = p.internal_padding_mm ?? localPad?.internal_padding_mm ?? 1.8;
+        return {
+          ...p,
+          internal_padding_mm: intPad,
+          padding_top_mm: p.padding_top_mm ?? localPad?.padding_top_mm ?? intPad,
+          padding_left_mm: p.padding_left_mm ?? localPad?.padding_left_mm ?? intPad,
+          padding_right_mm: p.padding_right_mm ?? localPad?.padding_right_mm ?? intPad,
+          padding_bottom_mm: p.padding_bottom_mm ?? localPad?.padding_bottom_mm ?? intPad,
+        };
+      });
+
       setPapers(loaded);
       if (loaded.length > 0 && !previewPaper) {
         setPreviewPaper(loaded[0]);
       } else if (previewPaper) {
-        // Keep preview in sync if it was updated
         const updated = loaded.find((p) => p.id === previewPaper.id);
         if (updated) setPreviewPaper(updated);
       }
@@ -102,6 +124,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
 
   const handleOpenAdd = () => {
     setEditingPaper(null);
+    setShowAdvancedPadding(false);
     setFormData(DEFAULT_FORM_DATA);
     setErrorMessage(null);
     setIsModalOpen(true);
@@ -110,6 +133,17 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
   const handleOpenEdit = (paper: LabelPaperType, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setEditingPaper(paper);
+
+    const intPad = paper.internal_padding_mm ?? 1.8;
+    const topPad = paper.padding_top_mm ?? intPad;
+    const leftPad = paper.padding_left_mm ?? intPad;
+    const rightPad = paper.padding_right_mm ?? intPad;
+    const bottomPad = paper.padding_bottom_mm ?? intPad;
+
+    const hasUneven =
+      topPad !== intPad || leftPad !== intPad || rightPad !== intPad || bottomPad !== intPad;
+    setShowAdvancedPadding(hasUneven);
+
     setFormData({
       name: paper.name,
       rows: paper.rows,
@@ -124,6 +158,11 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
       gutter_y_mm: paper.gutter_y_mm || 0,
       fill_order: paper.fill_order || 'row-major',
       active: paper.active ?? true,
+      internal_padding_mm: intPad,
+      padding_top_mm: topPad,
+      padding_left_mm: leftPad,
+      padding_right_mm: rightPad,
+      padding_bottom_mm: bottomPad,
     });
     setErrorMessage(null);
     setIsModalOpen(true);
@@ -143,6 +182,10 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
 
       if (error) throw error;
 
+      try {
+        localStorage.removeItem(`paper_pad_${paper.id}`);
+      } catch (_) {}
+
       if (previewPaper?.id === paper.id) {
         setPreviewPaper(null);
       }
@@ -161,7 +204,13 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
     setSaving(true);
     setErrorMessage(null);
 
-    const payload = {
+    const intPad = Number(formData.internal_padding_mm ?? 1.8);
+    const padTop = Number(formData.padding_top_mm ?? intPad);
+    const padLeft = Number(formData.padding_left_mm ?? intPad);
+    const padRight = Number(formData.padding_right_mm ?? intPad);
+    const padBottom = Number(formData.padding_bottom_mm ?? intPad);
+
+    const basePayload = {
       name: formData.name.trim(),
       rows: Number(formData.rows) || 1,
       columns: Number(formData.columns) || 1,
@@ -177,33 +226,96 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
       active: formData.active ?? true,
     };
 
+    const fullPayload = {
+      ...basePayload,
+      internal_padding_mm: intPad,
+      padding_top_mm: padTop,
+      padding_left_mm: padLeft,
+      padding_right_mm: padRight,
+      padding_bottom_mm: padBottom,
+    };
+
+    const saveLocalPadding = (paperId: string) => {
+      try {
+        localStorage.setItem(
+          `paper_pad_${paperId}`,
+          JSON.stringify({
+            internal_padding_mm: intPad,
+            padding_top_mm: padTop,
+            padding_left_mm: padLeft,
+            padding_right_mm: padRight,
+            padding_bottom_mm: padBottom,
+          })
+        );
+      } catch (_) {}
+    };
+
     try {
       if (editingPaper?.id) {
-        // Update existing paper type
-        const { data, error } = await supabase
+        // Try full payload with padding columns
+        let res = await supabase
           .from('label_paper_types')
-          .update(payload)
+          .update(fullPayload)
           .eq('id', editingPaper.id)
           .select()
           .single();
 
-        if (error) throw error;
+        // If DB doesn't have the column yet, fallback to base payload
+        if (res.error && (res.error.code === 'PGRST204' || res.error.message?.includes('column'))) {
+          res = await supabase
+            .from('label_paper_types')
+            .update(basePayload)
+            .eq('id', editingPaper.id)
+            .select()
+            .single();
+        }
+
+        if (res.error) throw res.error;
+        saveLocalPadding(editingPaper.id);
         await fetchPapers();
         setIsModalOpen(false);
         setEditingPaper(null);
-        if (data) setPreviewPaper(data);
+        if (res.data) {
+          setPreviewPaper({
+            ...res.data,
+            internal_padding_mm: intPad,
+            padding_top_mm: padTop,
+            padding_left_mm: padLeft,
+            padding_right_mm: padRight,
+            padding_bottom_mm: padBottom,
+          });
+        }
       } else {
-        // Create new paper type
-        const { data, error } = await supabase
+        let res = await supabase
           .from('label_paper_types')
-          .insert([{ ...payload, created_by: currentUserName }])
+          .insert([{ ...fullPayload, created_by: currentUserName }])
           .select()
           .single();
 
-        if (error) throw error;
+        if (res.error && (res.error.code === 'PGRST204' || res.error.message?.includes('column'))) {
+          res = await supabase
+            .from('label_paper_types')
+            .insert([{ ...basePayload, created_by: currentUserName }])
+            .select()
+            .single();
+        }
+
+        if (res.error) throw res.error;
+        if (res.data?.id) {
+          saveLocalPadding(res.data.id);
+        }
         await fetchPapers();
         setIsModalOpen(false);
-        if (data) setPreviewPaper(data);
+        if (res.data) {
+          setPreviewPaper({
+            ...res.data,
+            internal_padding_mm: intPad,
+            padding_top_mm: padTop,
+            padding_left_mm: padLeft,
+            padding_right_mm: padRight,
+            padding_bottom_mm: padBottom,
+          });
+        }
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to save paper format.');
@@ -227,6 +339,17 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
   const pageH = Number(formData.page_height_mm) || 297;
   const hasDimensionWarning = calcTotalW > pageW || calcTotalH > pageH;
 
+  const currentLabelW = Number(formData.label_width_mm) || 70;
+  const currentLabelH = Number(formData.label_height_mm) || 37;
+  const curPadTop = Number(formData.padding_top_mm ?? formData.internal_padding_mm ?? 1.8);
+  const curPadBottom = Number(formData.padding_bottom_mm ?? formData.internal_padding_mm ?? 1.8);
+  const curPadLeft = Number(formData.padding_left_mm ?? formData.internal_padding_mm ?? 1.8);
+  const curPadRight = Number(formData.padding_right_mm ?? formData.internal_padding_mm ?? 1.8);
+
+  const safeW = currentLabelW - (curPadLeft + curPadRight);
+  const safeH = currentLabelH - (curPadTop + curPadBottom);
+  const hasPaddingWarning = safeW <= 10 || safeH <= 10;
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5, flexWrap: 'wrap', gap: 2 }}>
@@ -235,7 +358,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
             Label Paper & Die-Cut Formats
           </Typography>
           <Typography variant="body2" sx={{ color: 'var(--text2, #8a92a8)' }}>
-            Define, calibrate, and edit sheet geometries with live layout preview for batch label printing
+            Configure sheet grids, die-cut label sizes, and internal print safe padding
           </Typography>
         </Box>
         {canEdit && (
@@ -260,6 +383,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Grid (R×C)</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Label Size (W×H)</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Margins (T/L)</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Internal Pad</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Status</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Actions</TableCell>
                 </TableRow>
@@ -267,7 +391,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
               <TableBody>
                 {papers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'var(--text2, #8a92a8)' }}>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'var(--text2, #8a92a8)' }}>
                       No paper formats configured yet. Click "Add Custom Stock" to create one.
                     </TableCell>
                   </TableRow>
@@ -293,6 +417,11 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
                       </TableCell>
                       <TableCell sx={{ color: 'var(--text2, #8a92a8)' }}>
                         T: {p.margin_top_mm}mm, L: {p.margin_left_mm}mm
+                      </TableCell>
+                      <TableCell sx={{ color: '#38bdf8', fontWeight: 600 }}>
+                        {p.padding_top_mm !== p.padding_left_mm
+                          ? `T:${p.padding_top_mm} L:${p.padding_left_mm}mm`
+                          : `${p.internal_padding_mm ?? 1.8} mm`}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -368,9 +497,16 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
           <Card elevation={0} sx={{ border: '1px solid var(--border, #2e3340)', borderRadius: 2, bgcolor: 'var(--bg2, #141720)' }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
-                  Scaled Layout: {previewPaper?.name || 'Select Stock'}
-                </Typography>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
+                    Scaled Layout: {previewPaper?.name || 'Select Stock'}
+                  </Typography>
+                  {previewPaper && (
+                    <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>
+                      Pad: {previewPaper.internal_padding_mm ?? 1.8}mm | Printable: {(previewPaper.label_width_mm - 2 * (previewPaper.internal_padding_mm ?? 1.8)).toFixed(1)}×{(previewPaper.label_height_mm - 2 * (previewPaper.internal_padding_mm ?? 1.8)).toFixed(1)}mm
+                    </Typography>
+                  )}
+                </Box>
                 {previewPaper && canEdit && (
                   <Button
                     size="small"
@@ -424,6 +560,12 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
           {hasDimensionWarning && (
             <Alert severity="warning" sx={{ mb: 2 }}>
               Warning: Grid boundaries ({calcTotalW.toFixed(1)}mm × {calcTotalH.toFixed(1)}mm) exceed sheet dimensions ({pageW}mm × {pageH}mm). Please verify margins or label size.
+            </Alert>
+          )}
+
+          {hasPaddingWarning && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Warning: Internal padding reduces safe printable area below 10mm ({safeW.toFixed(1)}×{safeH.toFixed(1)}mm). Content may overflow label boundaries.
             </Alert>
           )}
 
@@ -545,6 +687,106 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
                 value={formData.gutter_y_mm ?? 0}
                 onChange={(e) => setFormData({ ...formData, gutter_y_mm: parseFloat(e.target.value) || 0 })}
               />
+            </Grid>
+
+            {/* ── Internal Label Padding (Print Safe Margins) ── */}
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ p: 2, bgcolor: 'var(--bg3, #1c2028)', borderRadius: 2, border: '1px solid var(--border, #2e3340)' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
+                      Internal Label Padding (Inner Safe Margin)
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>
+                      Distance in millimeters between label die-cut edge and printed text / barcode / QR code
+                    </Typography>
+                  </Box>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={showAdvancedPadding}
+                        onChange={(e) => setShowAdvancedPadding(e.target.checked)}
+                      />
+                    }
+                    label={<Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>Separate Edge Controls</Typography>}
+                  />
+                </Box>
+
+                {!showAdvancedPadding ? (
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12 }}>
+                      <TextField
+                        label="Uniform Internal Padding (mm)"
+                        type="number"
+                        fullWidth
+                        size="small"
+                        value={formData.internal_padding_mm ?? 1.8}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setFormData({
+                            ...formData,
+                            internal_padding_mm: val,
+                            padding_top_mm: val,
+                            padding_left_mm: val,
+                            padding_right_mm: val,
+                            padding_bottom_mm: val,
+                          });
+                        }}
+                        helperText={`Applied equally to Top, Bottom, Left, and Right. Safe printable zone: ${safeW.toFixed(1)} × ${safeH.toFixed(1)} mm`}
+                      />
+                    </Grid>
+                  </Grid>
+                ) : (
+                  <Grid container spacing={1.5}>
+                    <Grid size={{ xs: 3 }}>
+                      <TextField
+                        label="Top Pad (mm)"
+                        type="number"
+                        size="small"
+                        fullWidth
+                        value={formData.padding_top_mm ?? formData.internal_padding_mm ?? 1.8}
+                        onChange={(e) => setFormData({ ...formData, padding_top_mm: parseFloat(e.target.value) || 0 })}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 3 }}>
+                      <TextField
+                        label="Bottom Pad (mm)"
+                        type="number"
+                        size="small"
+                        fullWidth
+                        value={formData.padding_bottom_mm ?? formData.internal_padding_mm ?? 1.8}
+                        onChange={(e) => setFormData({ ...formData, padding_bottom_mm: parseFloat(e.target.value) || 0 })}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 3 }}>
+                      <TextField
+                        label="Left Pad (mm)"
+                        type="number"
+                        size="small"
+                        fullWidth
+                        value={formData.padding_left_mm ?? formData.internal_padding_mm ?? 1.8}
+                        onChange={(e) => setFormData({ ...formData, padding_left_mm: parseFloat(e.target.value) || 0 })}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 3 }}>
+                      <TextField
+                        label="Right Pad (mm)"
+                        type="number"
+                        size="small"
+                        fullWidth
+                        value={formData.padding_right_mm ?? formData.internal_padding_mm ?? 1.8}
+                        onChange={(e) => setFormData({ ...formData, padding_right_mm: parseFloat(e.target.value) || 0 })}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12 }}>
+                      <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>
+                        Safe printable zone: {safeW.toFixed(1)} × {safeH.toFixed(1)} mm
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                )}
+              </Box>
             </Grid>
 
             <Grid size={{ xs: 8 }}>

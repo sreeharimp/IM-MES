@@ -348,6 +348,11 @@ export interface LabelPaperType {
   gutter_y_mm: number;
   fill_order: FillOrder;
   active: boolean;
+  internal_padding_mm?: number;
+  padding_top_mm?: number;
+  padding_left_mm?: number;
+  padding_right_mm?: number;
+  padding_bottom_mm?: number;
   created_by?: string;
   created_at: string;
 }

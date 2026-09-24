@@ -18,6 +18,11 @@ export const PaperScalePreview: React.FC<PaperScalePreviewProps> = ({ paper }) =
   const gX = Number(paper.gutter_x_mm) || 0;
   const gY = Number(paper.gutter_y_mm) || 0;
 
+  const padTop = Number(paper.padding_top_mm ?? paper.internal_padding_mm ?? 1.8);
+  const padLeft = Number(paper.padding_left_mm ?? paper.internal_padding_mm ?? 1.8);
+  const padRight = Number(paper.padding_right_mm ?? paper.internal_padding_mm ?? 1.8);
+  const padBottom = Number(paper.padding_bottom_mm ?? paper.internal_padding_mm ?? 1.8);
+
   const previewBoxWidth = 320;
   const scale = previewBoxWidth / pW;
   const previewBoxHeight = pH * scale;
@@ -42,8 +47,12 @@ export const PaperScalePreview: React.FC<PaperScalePreviewProps> = ({ paper }) =
               const x = mL + c * (lW + gX);
               const y = mT + r * (lH + gY);
 
+              const innerW = Math.max(0.5, lW - (padLeft + padRight));
+              const innerH = Math.max(0.5, lH - (padTop + padBottom));
+
               return (
                 <g key={`${r}-${c}`}>
+                  {/* Die-cut label shape */}
                   <rect
                     x={x}
                     y={y}
@@ -54,10 +63,25 @@ export const PaperScalePreview: React.FC<PaperScalePreviewProps> = ({ paper }) =
                     strokeWidth={0.3}
                     rx={1}
                   />
+
+                  {/* Internal padding safe printable zone */}
+                  {(padLeft > 0 || padTop > 0 || padRight > 0 || padBottom > 0) && (
+                    <rect
+                      x={x + padLeft}
+                      y={y + padTop}
+                      width={innerW}
+                      height={innerH}
+                      fill="none"
+                      stroke="#0284c7"
+                      strokeWidth={0.2}
+                      strokeDasharray="0.8,0.8"
+                    />
+                  )}
+
                   <text
-                    x={x + 1.5}
-                    y={y + 3.5}
-                    fontSize={2.5}
+                    x={x + padLeft + 1}
+                    y={y + padTop + 3.2}
+                    fontSize={2.3}
                     fill="#475569"
                     fontWeight="bold"
                     fontFamily="monospace"
@@ -65,9 +89,9 @@ export const PaperScalePreview: React.FC<PaperScalePreviewProps> = ({ paper }) =
                     R{r + 1}C{c + 1}
                   </text>
                   <text
-                    x={x + 1.5}
-                    y={y + 7}
-                    fontSize={2}
+                    x={x + padLeft + 1}
+                    y={y + padTop + 6.2}
+                    fontSize={1.8}
                     fill="#64748b"
                     fontFamily="sans-serif"
                   >
@@ -79,9 +103,14 @@ export const PaperScalePreview: React.FC<PaperScalePreviewProps> = ({ paper }) =
           })}
         </svg>
       </Box>
-      <Typography variant="caption" sx={{ mt: 1, color: '#64748b', fontWeight: 600 }}>
-        True Aspect Ratio SVG Scale Preview ({pW} × {pH} mm)
-      </Typography>
+      <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
+          Scale: {pW} × {pH} mm
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#0284c7', fontWeight: 600 }}>
+          • Safe zone (pad: {padTop}mm)
+        </Typography>
+      </Box>
     </Box>
   );
 };
