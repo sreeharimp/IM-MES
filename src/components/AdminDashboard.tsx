@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Users, Box, Layers, Database, Cpu, RefreshCcw, Edit2, X, ShieldCheck, Clock, AlertTriangle, Wrench } from 'lucide-react';
+import { Plus, Trash2, Users, Box, Layers, Database, Cpu, RefreshCcw, Edit2, X, ShieldCheck, Clock, AlertTriangle, Wrench, Calendar, Lock, UserCheck, LogOut, UserX, ShieldAlert } from 'lucide-react';
 import type { Machine, Operator, Mould, Product, RawMaterial, ProductMaterial, ShiftSetting, DefectType, BreakdownReason, CleaningTask } from '../types';
 import { supabase } from '../lib/supabase';
 import { logSystemChange } from '../utils/systemChanges';
+import { ProductionPlannerModule } from './planner/ProductionPlannerModule';
 
 interface AdminDashboardProps {
   machines: Machine[];
@@ -59,8 +60,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   machines, operators, moulds, products, rawMaterials, productMaterials, supervisors, shiftSettings, defectTypes, breakdownReasons, cleaningTasks, currentUserRole,
   currentUserName = 'Admin', currentUserId
 }) => {
-  const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users' | 'defects' | 'breakdowns' | 'checklist'>('machines');
-  const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string }[]>([]);
+  const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users' | 'defects' | 'breakdowns' | 'checklist' | 'planning'>('machines');
+  const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string, is_active?: boolean, last_seen_at?: string | null, revoked_reason?: string | null }[]>([]);
   const [newSupervisor, setNewSupervisor] = useState({ email: '', fullName: '', employeeCode: '' });
   const [newOperator, setNewOperator] = useState({ name: '', employeeId: '' });
   const [newMould, setNewMould] = useState({ id: '', name: '', cavities: 4, cycleTime: 20 });
@@ -88,6 +89,120 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const DEFAULT_USER_TYPES = ['Admin', 'PowerUser', 'Supervisor', 'QC', 'Planner', 'Stores', 'Operator'];
+
+  const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
+    Admin: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    QC: ['Inspections', 'Packing', 'Batch Log', 'Shift Log', 'About'],
+    Planner: ['Planning & Labels', 'Batch Log', 'Shift Log', 'About'],
+    Stores: ['Planning & Labels', 'Packing', 'About'],
+    Operator: ['Shop Floor', 'About'],
+  };
+
+  const [userTypes, setUserTypes] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('mes_user_types');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Failed to parse cached user types', e);
+    }
+    return DEFAULT_USER_TYPES;
+  });
+
+  const [newUserType, setNewUserType] = useState('');
+
+  const handleAddUserType = () => {
+    const trimmed = newUserType.trim();
+    if (!trimmed) return;
+    if (userTypes.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
+      showError(`User type "${trimmed}" already exists.`);
+      return;
+    }
+    const updated = [...userTypes, trimmed];
+    setUserTypes(updated);
+    setRolePermissions(prev => ({
+      ...prev,
+      [trimmed]: prev[trimmed] || ['Shop Floor', 'About'],
+    }));
+    localStorage.setItem('mes_user_types', JSON.stringify(updated));
+    setNewUserType('');
+    showSuccess(`User type "${trimmed}" added! Configure permissions and click "Save Access Levels".`);
+  };
+
+  const handleDeleteUserType = (roleToDelete: string) => {
+    if (!confirm(`Are you sure you want to delete user type "${roleToDelete}"?`)) return;
+    const updated = userTypes.filter(t => t !== roleToDelete);
+    setUserTypes(updated);
+    setRolePermissions(prev => {
+      const copy = { ...prev };
+      delete copy[roleToDelete];
+      return copy;
+    });
+    localStorage.setItem('mes_user_types', JSON.stringify(updated));
+    showSuccess(`User type "${roleToDelete}" deleted.`);
+  };
+
+  const [rolePermissions, setRolePermissions] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem('mes_role_permissions');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Failed to parse cached role permissions', e);
+    }
+    return DEFAULT_ROLE_PERMISSIONS;
+  });
+
+  const [isSavingPermissions, setIsSavingPermissions] = useState(false);
+
+  const togglePermission = (role: string, moduleId: string) => {
+    setRolePermissions(prev => {
+      const current = prev[role] || [];
+      const updated = current.includes(moduleId)
+        ? current.filter(m => m !== moduleId)
+        : [...current, moduleId];
+      return { ...prev, [role]: updated };
+    });
+  };
+
+  const saveAccessLevels = async () => {
+    setIsSavingPermissions(true);
+    try {
+      localStorage.setItem('mes_role_permissions', JSON.stringify(rolePermissions));
+      localStorage.setItem('mes_user_types', JSON.stringify(userTypes));
+      window.dispatchEvent(new CustomEvent('mes_permissions_updated', { detail: { rolePermissions, userTypes } }));
+
+      const { error } = await supabase.from('app_settings').upsert({
+        id: 'global',
+        role_permissions: rolePermissions,
+      });
+
+      if (error) {
+        console.warn('Persist to app_settings DB warning (column or RLS):', error.message);
+      }
+
+      logSystemChange({
+        module: 'User Access',
+        tableName: 'app_settings',
+        recordId: 'global',
+        fieldChanged: 'role_permissions',
+        newValue: JSON.stringify(rolePermissions),
+        action: 'UPDATE',
+        reason: 'Saved RBAC User Types & Module Access Levels',
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
+
+      showSuccess('Access levels saved successfully.');
+    } catch (err: any) {
+      showError(`Failed to save access levels: ${err.message}`);
+    } finally {
+      setIsSavingPermissions(false);
+    }
+  };
+
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
@@ -101,9 +216,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   React.useEffect(() => {
     const fetchProfiles = async () => {
       const { data } = await supabase.from('profiles').select('*').order('full_name');
-      if (data) setProfiles(data.map(p => ({ id: p.id, email: p.email, full_name: p.full_name, role: p.role, employee_code: p.employee_code })));
+      if (data) setProfiles(data.map(p => ({ 
+        id: p.id, 
+        email: p.email, 
+        full_name: p.full_name, 
+        role: p.role, 
+        employee_code: p.employee_code,
+        is_active: p.is_active,
+        last_seen_at: p.last_seen_at,
+        revoked_reason: p.revoked_reason
+      })));
     };
     fetchProfiles();
+
+    const fetchRolePermissions = async () => {
+      try {
+        const { data } = await supabase.from('app_settings').select('role_permissions').eq('id', 'global').maybeSingle();
+        if (data?.role_permissions) {
+          setRolePermissions(data.role_permissions);
+          localStorage.setItem('mes_role_permissions', JSON.stringify(data.role_permissions));
+        }
+      } catch (err) {
+        console.warn('Could not fetch role_permissions from app_settings', err);
+      }
+    };
+    fetchRolePermissions();
     
     // Subscribe to profile changes
     const sub = supabase.channel('profiles_realtime')
@@ -474,6 +611,96 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const isUserOnline = (p: { is_active?: boolean, last_seen_at?: string | null }) => {
+    if (p.is_active === false) return false;
+    if (!p.last_seen_at) return false;
+    const diffMs = Date.now() - new Date(p.last_seen_at).getTime();
+    return diffMs >= 0 && diffMs < 120000; // Active within last 2 minutes
+  };
+
+  const formatLastSeen = (p: { is_active?: boolean, last_seen_at?: string | null }) => {
+    if (p.is_active === false) return 'Revoked';
+    if (!p.last_seen_at) return 'Never';
+    const diffSec = Math.floor((Date.now() - new Date(p.last_seen_at).getTime()) / 1000);
+    if (diffSec < 60) return 'Just now';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    return new Date(p.last_seen_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  const forceLogoutUser = async (user: { id: string, full_name: string, email: string }) => {
+    if (user.id === currentUserId) {
+      showError("You cannot force logout your own active session.");
+      return;
+    }
+    if (!window.confirm(`Force logout ${user.full_name || user.email}? Their active session will be terminated immediately.`)) {
+      return;
+    }
+    const { error } = await supabase.from('profiles').update({
+      revoked_reason: 'FORCE_LOGOUT',
+      last_seen_at: null,
+      updated_at: new Date().toISOString()
+    }).eq('id', user.id);
+
+    if (error) {
+      showError(`Failed to logout user: ${error.message}`);
+    } else {
+      showSuccess(`Logged out ${user.full_name || user.email}`);
+      logSystemChange({
+        module: 'Access Control',
+        tableName: 'profiles',
+        recordId: user.id,
+        fieldChanged: 'session',
+        oldValue: 'Active',
+        newValue: 'Logged Out',
+        action: 'UPDATE',
+        reason: `Admin forced logout for ${user.full_name}`,
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
+      setProfiles(prev => prev.map(p => p.id === user.id ? { ...p, last_seen_at: null, revoked_reason: 'FORCE_LOGOUT' } : p));
+    }
+  };
+
+  const toggleRevokeAccess = async (user: { id: string, full_name: string, email: string, is_active?: boolean }) => {
+    if (user.id === currentUserId) {
+      showError("You cannot revoke your own account access.");
+      return;
+    }
+    const willRevoke = user.is_active !== false;
+    const confirmMsg = willRevoke 
+      ? `Are you sure you want to REVOKE access for ${user.full_name || user.email}? They will be immediately disconnected and prevented from logging in.`
+      : `Restore account access for ${user.full_name || user.email}?`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    const updates = willRevoke
+      ? { is_active: false, revoked_reason: `Revoked by ${currentUserName || 'Admin'} at ${new Date().toLocaleString()}`, last_seen_at: null, updated_at: new Date().toISOString() }
+      : { is_active: true, revoked_reason: null, updated_at: new Date().toISOString() };
+
+    const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
+    if (error) {
+      showError(`Failed to update access: ${error.message}`);
+    } else {
+      showSuccess(willRevoke ? `Access revoked for ${user.full_name}` : `Access restored for ${user.full_name}`);
+      logSystemChange({
+        module: 'Access Control',
+        tableName: 'profiles',
+        recordId: user.id,
+        fieldChanged: 'is_active',
+        oldValue: willRevoke ? 'true' : 'false',
+        newValue: willRevoke ? 'false' : 'true',
+        action: 'UPDATE',
+        reason: willRevoke ? `Revoked access for ${user.full_name}` : `Restored access for ${user.full_name}`,
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
+      setProfiles(prev => prev.map(p => p.id === user.id ? { ...p, ...updates } : p));
+    }
+  };
+
   const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
     <button 
       onClick={() => setActiveTab(id)}
@@ -514,10 +741,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <TabButton id="machines" label="Machines" icon={Cpu} />
           <TabButton id="moulds" label="Moulds" icon={Box} />
           <TabButton id="products" label="Products" icon={Layers} />
+          <TabButton id="planning" label="Production Planning" icon={Calendar} />
           <TabButton id="materials" label="Materials" icon={Database} />
           <TabButton id="operators" label="Operators" icon={Users} />
-          {currentUserRole === 'Admin' && (
-            <TabButton id="users" label="User Management" icon={ShieldCheck} />
+          {['Admin', 'PowerUser', 'Supervisor'].includes(currentUserRole) && (
+            <TabButton id="users" label="Access Management" icon={ShieldCheck} />
           )}
           <TabButton id="shifts" label="Shift Setup" icon={Clock} />
           <TabButton id="defects" label="Defects" icon={AlertTriangle} />
@@ -812,33 +1040,108 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px' }}>Active User Profiles</div>
                    <table className="dt">
                     <thead>
-                      <tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Last Active</th>
+                        <th>Actions</th>
+                      </tr>
                     </thead>
                     <tbody>
-                      {profiles.map(p => (
-                        <tr key={p.id}>
-                          <td style={{ fontWeight: 600 }}>{p.full_name || 'No Name'} <span style={{fontSize:'10px', color:'var(--text3)'}}>{p.employee_code && `(${p.employee_code})`}</span></td>
-                          <td className="mono" style={{ color: 'var(--text2)' }}>{p.email}</td>
-                          <td>
-                            <span className={`pill ${p.role === 'Admin' ? 'pg' : p.role === 'PowerUser' ? 'pp' : 'pd'}`}>
-                              {p.role || 'Supervisor'}
-                            </span>
-                          </td>
-                          <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <button className="btn bpri" style={{ height: '28px', padding: '0 8px', fontSize: '10px' }} onClick={() => editProfile(p)}>Edit</button>
-                            <select 
-                              className="fi" 
-                              style={{ height: '28px', padding: '0 8px', fontSize: '11px', flex: 1 }}
-                              value={p.role || 'Supervisor'}
-                              onChange={(e) => updateUserRole(p.id, e.target.value)}
-                            >
-                              <option value="Supervisor">Supervisor</option>
-                              <option value="PowerUser">PowerUser</option>
-                              <option value="Admin">Admin</option>
-                            </select>
-                          </td>
-                        </tr>
-                      ))}
+                      {profiles.map(p => {
+                        const online = isUserOnline(p);
+                        const isRevoked = p.is_active === false;
+                        return (
+                          <tr key={p.id}>
+                            <td style={{ fontWeight: 600 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {isRevoked ? (
+                                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--red)', display: 'inline-block' }} title="Access Revoked" />
+                                ) : online ? (
+                                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)', display: 'inline-block' }} title="Online / Logged In" />
+                                ) : (
+                                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--text3)', opacity: 0.4, display: 'inline-block' }} title="Offline" />
+                                )}
+                                <span>{p.full_name || 'No Name'}</span>
+                                {p.employee_code && <span style={{ fontSize: '10px', color: 'var(--text3)' }}>({p.employee_code})</span>}
+                              </div>
+                            </td>
+                            <td className="mono" style={{ color: 'var(--text2)', fontSize: '11px' }}>{p.email}</td>
+                            <td>
+                              <span className={`pill ${p.role === 'Admin' ? 'pg' : p.role === 'PowerUser' ? 'pp' : 'pd'}`}>
+                                {p.role || 'Supervisor'}
+                              </span>
+                            </td>
+                            <td>
+                              {isRevoked ? (
+                                <span className="pill pr" style={{ fontSize: '10px', fontWeight: 600 }}>Revoked</span>
+                              ) : online ? (
+                                <span className="pill pg" style={{ fontSize: '10px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  ● Logged In
+                                </span>
+                              ) : (
+                                <span className="pill pd" style={{ fontSize: '10px', color: 'var(--text3)' }}>Offline</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: '11px', color: 'var(--text2)' }}>
+                              {formatLastSeen(p)}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <button className="btn bpri" style={{ height: '26px', padding: '0 8px', fontSize: '10px' }} onClick={() => editProfile(p)}>Edit</button>
+                                <select 
+                                  className="fi" 
+                                  style={{ height: '26px', padding: '0 6px', fontSize: '11px', minWidth: '95px' }}
+                                  value={p.role || 'Supervisor'}
+                                  onChange={(e) => updateUserRole(p.id, e.target.value)}
+                                >
+                                  {userTypes.map(role => (
+                                    <option key={role} value={role}>{role}</option>
+                                  ))}
+                                </select>
+
+                                {/* Manual Force Logout */}
+                                <button 
+                                  className="btn bwrn" 
+                                  style={{ height: '26px', padding: '0 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  disabled={p.id === currentUserId}
+                                  title={p.id === currentUserId ? "Cannot logout own active session" : "Force logout this user"}
+                                  onClick={() => forceLogoutUser(p)}
+                                >
+                                  <LogOut size={11} />
+                                  <span>Logout</span>
+                                </button>
+
+                                {/* Revoke / Restore Access */}
+                                {!isRevoked ? (
+                                  <button 
+                                    className="btn bdan" 
+                                    style={{ height: '26px', padding: '0 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    disabled={p.id === currentUserId}
+                                    title={p.id === currentUserId ? "Cannot revoke own access" : "Revoke user access"}
+                                    onClick={() => toggleRevokeAccess(p)}
+                                  >
+                                    <UserX size={11} />
+                                    <span>Revoke</span>
+                                  </button>
+                                ) : (
+                                  <button 
+                                    className="btn bpri" 
+                                    style={{ height: '26px', padding: '0 8px', fontSize: '10px', background: 'var(--green)', borderColor: 'var(--green)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    title="Restore user access"
+                                    onClick={() => toggleRevokeAccess(p)}
+                                  >
+                                    <UserCheck size={11} />
+                                    <span>Restore</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                  </div>
@@ -867,6 +1170,151 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
           </div>
+
+          {/* User Types & Module Access Levels (RBAC) */}
+          <div className="card" style={{ marginTop: '16px' }}>
+            <div className="ch" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <span className="ct2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Lock size={15} /> User Types & Module Access Levels (RBAC)
+              </span>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <input
+                    className="fi"
+                    placeholder="New User Type (e.g. Technician)"
+                    value={newUserType}
+                    onChange={(e) => setNewUserType(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddUserType()}
+                    style={{ height: '30px', fontSize: '12px', minWidth: '180px' }}
+                  />
+                  <button
+                    className="btn bsec bsm"
+                    onClick={handleAddUserType}
+                    disabled={!newUserType.trim()}
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                    title="Add new user type"
+                  >
+                    <Plus size={13} />
+                    <span>Add User Type</span>
+                  </button>
+                </div>
+                <button 
+                  className="btn bsec bsm" 
+                  onClick={() => setRolePermissions(DEFAULT_ROLE_PERMISSIONS)}
+                  title="Reset to default access levels"
+                >
+                  Reset Defaults
+                </button>
+                <button 
+                  className="btn bpri bsm" 
+                  onClick={saveAccessLevels}
+                  disabled={isSavingPermissions}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, padding: '6px 14px' }}
+                >
+                  {isSavingPermissions ? <RefreshCcw size={13} className="spin" /> : <ShieldCheck size={13} />}
+                  <span>Save Access Levels</span>
+                </button>
+              </div>
+            </div>
+            <div className="cb">
+              <p style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '16px', lineHeight: '1.5' }}>
+                Select which modules and features each user type can access. For example, QC users have access to QC Inspections, Packing App, Batch Logs, and Shift Logs.
+              </p>
+
+              <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                <table className="dt" style={{ width: '100%', minWidth: '780px', margin: 0 }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                      <th style={{ textAlign: 'left', minWidth: '220px', padding: '12px 16px' }}>Module / Feature</th>
+                      {userTypes.map(role => (
+                        <th key={role} style={{ textAlign: 'center', minWidth: '85px', padding: '12px 8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <span style={{ fontWeight: 700, fontSize: '12px' }}>{role}</span>
+                            {!DEFAULT_USER_TYPES.includes(role) && (
+                              <button
+                                onClick={() => handleDeleteUserType(role)}
+                                title={`Delete user type "${role}"`}
+                                style={{ background: 'transparent', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '0 2px' }}
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { id: 'Live Dashboard', label: 'Live Dashboard', desc: 'Real-time plant output, OEE & active machine status' },
+                      { id: 'Shop Floor', label: 'Shop Floor', desc: 'Live unit output, ongoing job cards & machine controls' },
+                      { id: 'Planning & Labels', label: 'Production Planning', desc: 'Batch planning, Avery labels & waste elimination queue' },
+                      { id: 'Inspections', label: 'QC Inspections', desc: 'First-Article inspection & defect categorization' },
+                      { id: 'Packing', label: 'Packing App', desc: 'Secondary packaging, box scanning & barcode labels' },
+                      { id: 'Batch Log', label: 'Batch Logs', desc: 'Batch traceability, lot genealogy & bin breakdown' },
+                      { id: 'Shift Log', label: 'Shift Logs', desc: 'Shift output logs & supervisor handover records' },
+                      { id: 'Breakdowns', label: 'Breakdowns', desc: 'Maintenance downtime & resolution logging' },
+                      { id: 'Machines', label: 'Admin Console', desc: 'Registry, moulds, products, materials & user access' },
+                      { id: 'About', label: 'System Info & About', desc: 'Platform version, build information & documentation' },
+                    ].map((mod, idx) => (
+                      <tr key={mod.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
+                        <td style={{ padding: '10px 16px' }}>
+                          <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{mod.label}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{mod.desc}</div>
+                        </td>
+                        {userTypes.map(role => {
+                          const isChecked = (rolePermissions[role] || []).includes(mod.id);
+                          const isAdminRole = role === 'Admin';
+                          return (
+                            <td key={role} style={{ textAlign: 'center', verticalAlign: 'middle', padding: '10px 8px' }}>
+                              <label style={{ 
+                                cursor: isAdminRole ? 'not-allowed' : 'pointer', 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                padding: '4px',
+                                borderRadius: '4px',
+                                transition: 'background 0.2s'
+                              }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isAdminRole || isChecked}
+                                  disabled={isAdminRole}
+                                  onChange={() => !isAdminRole && togglePermission(role, mod.id)}
+                                  style={{
+                                    width: '18px',
+                                    height: '18px',
+                                    cursor: isAdminRole ? 'not-allowed' : 'pointer',
+                                    accentColor: 'var(--blue)',
+                                  }}
+                                  title={isAdminRole ? 'Admin has all permissions by default' : `Toggle ${mod.label} for ${role}`}
+                                />
+                              </label>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'planning' && (
+        <div className="animate-fade-in" style={{ marginBottom: '24px' }}>
+          <ProductionPlannerModule
+            currentUser={{
+              id: currentUserId || '',
+              name: currentUserName || 'Admin',
+              email: '',
+              role: currentUserRole || 'Admin',
+            }}
+            products={products}
+            machines={machines}
+          />
         </div>
       )}
 

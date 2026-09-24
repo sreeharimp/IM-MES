@@ -129,7 +129,7 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
       }
     }
 
-    // 3. Shift Summaries (Handovers)
+    // 3. Shift Summaries (Handovers & Takeovers)
     const { data: summaries } = await supabase.from('shift_summaries').select('*').order('handover_time', { ascending: false });
     if (summaries) {
       for (const s of summaries) {
@@ -144,6 +144,20 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
           badge: `Shift ${s.shift_id}`,
           badgeColor: 'var(--amber)',
         });
+
+        if (s.incoming_supervisor_name) {
+          unified.push({
+            id: `shift-takeover-${s.id}`,
+            type: 'handover',
+            timestamp: s.handover_time,
+            shiftId: s.shift_id,
+            supervisorName: s.incoming_supervisor_name,
+            summary: `Shift takeover by ${s.incoming_supervisor_name}`,
+            detail: `Took charge from ${s.supervisor_name} · Shift acknowledged`,
+            badge: 'Takeover',
+            badgeColor: 'var(--green)',
+          });
+        }
       }
     }
     
@@ -223,6 +237,9 @@ const ShiftLogPage: React.FC<ShiftLogPageProps> = ({ machines, operators, produc
         } else if (al.event_type.toLowerCase().includes('assigned')) {
           logType = 'personnel';
           badgeColor = 'var(--blue)';
+        } else if (al.event_type.toLowerCase().includes('takeover') || al.event_type.toLowerCase().includes('handover')) {
+          logType = 'handover';
+          badgeColor = 'var(--green)';
         }
 
         unified.push({
