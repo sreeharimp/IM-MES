@@ -216,11 +216,12 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       if (tpl.showCompanyName) {
         doc.setFont('Helvetica', 'bold');
         doc.setFontSize(Math.min(6.8, Math.max(5, contentW / 8)));
-        doc.setTextColor(30, 41, 59);
+        doc.setTextColor(0, 0, 0);
         doc.text(tpl.companyName || 'AGNEY POLYSOFT INDIA PVT LTD', contentX, contentY + 2.5);
 
         // Subtle horizontal divider
-        doc.setDrawColor(180, 185, 190);
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.2);
         doc.line(contentX, contentY + 3.4, contentX + contentW, contentY + 3.4);
         contentY += 4.2;
       }
@@ -229,7 +230,7 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       if (tpl.showSubtitle && tpl.subtitleText) {
         doc.setFont('Helvetica', 'bold');
         doc.setFontSize(4.5);
-        doc.setTextColor(100, 116, 139);
+        doc.setTextColor(0, 0, 0);
         doc.text(tpl.subtitleText, contentX, contentY + 1.8);
         contentY += 3.0;
       }
@@ -243,24 +244,25 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
           ? Math.min(6.2, contentW / 8)
           : Math.min(7.2, contentW / 7);
       doc.setFontSize(pSize);
-      doc.setTextColor(15, 23, 42);
-      const pName = label.productName || 'Moulded Part';
+      doc.setTextColor(0, 0, 0);
+      const pName = label.productName || 'Product Name';
       const truncatedName = pName.length > 26 ? pName.substring(0, 24) + '..' : pName;
       doc.text(truncatedName, contentX, contentY + 3.0);
       contentY += 4.0;
 
       // 3. Batch / LOT Number
-      doc.setFont('Helvetica', 'normal');
+      doc.setFont('Helvetica', 'bold');
       doc.setFontSize(6.2);
-      doc.setTextColor(51, 65, 85);
+      doc.setTextColor(0, 0, 0);
 
       if (tpl.showBatchCode) {
         if (tpl.isoSymbols.showLot) {
           drawIsoSymbolOnPdf(doc, 'LOT', contentX, contentY, 5.5, 2.8, tpl.isoSymbols);
           doc.setFont('Helvetica', 'bold');
-          doc.text(` ${label.batchCode}`, contentX + 6.2, contentY + 2.1);
+          doc.setTextColor(0, 0, 0);
+          doc.text(` ${label.batchCode || 'LOT-2409'}`, contentX + 6.2, contentY + 2.1);
         } else {
-          doc.text(`${tpl.batchCodeLabel || 'LOT'}: ${label.batchCode}`, contentX, contentY + 2.1);
+          doc.text(`${tpl.batchCodeLabel || 'LOT'}: ${label.batchCode || 'LOT-2409'}`, contentX, contentY + 2.1);
         }
         contentY += 3.6;
       }
@@ -269,20 +271,21 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       if (tpl.showCaseNumber) {
         doc.setFont('Helvetica', 'bold');
         doc.setFontSize(6.5);
-        doc.setTextColor(15, 23, 42);
-        doc.text(`${tpl.caseNumberPrefix || 'CASE NO: #'}${label.sequenceNumber}`, contentX, contentY + 2.2);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`${tpl.caseNumberPrefix || 'CASE NO: #'}${label.sequenceNumber || 1}`, contentX, contentY + 2.2);
         contentY += 3.6;
       }
 
       // 5. Quantity (highlighted if partial)
       if (tpl.showQuantity) {
+        doc.setFont('Helvetica', 'bold');
         doc.setFontSize(7.0);
         if (label.isPartial) {
           doc.setTextColor(185, 28, 28);
-          doc.text(`${tpl.quantityLabel || 'QTY:'} ${label.expectedQuantity} PCS (PARTIAL)`, contentX, contentY + 2.4);
+          doc.text(`${tpl.quantityLabel || 'QTY:'} ${label.expectedQuantity || 500} PCS (PARTIAL)`, contentX, contentY + 2.4);
         } else {
-          doc.setTextColor(15, 23, 42);
-          doc.text(`${tpl.quantityLabel || 'QTY:'} ${label.expectedQuantity} PCS`, contentX, contentY + 2.4);
+          doc.setTextColor(0, 0, 0);
+          doc.text(`${tpl.quantityLabel || 'QTY:'} ${label.expectedQuantity || 500} PCS`, contentX, contentY + 2.4);
         }
       }
 
@@ -322,11 +325,12 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
 
       // 7. QC Approval Area
       if (tpl.showQcApproval) {
-        doc.setFont('Helvetica', 'normal');
+        doc.setFont('Helvetica', 'bold');
         doc.setFontSize(5.2);
-        doc.setTextColor(71, 85, 105);
+        doc.setTextColor(0, 0, 0);
         const qcY = y + lH - padBottom - 1.5;
-        doc.setDrawColor(100, 116, 139);
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.2);
         doc.rect(contentX, Math.max(contentY + 12, qcY - 2.8), 2.8, 2.8);
         doc.text(tpl.qcApprovalText || 'QC APPROVED', contentX + 3.6, Math.max(contentY + 12, qcY - 0.7));
         doc.text('Sign: ____________', contentX, y + lH - padBottom);

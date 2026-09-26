@@ -1076,7 +1076,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       y={padTop + 2.5}
                       fontSize={Math.min(2.8, safeW / 24)}
                       fontWeight="bold"
-                      fill="#0f172a"
+                      fill="#000000"
                       fontFamily="Helvetica, Arial, sans-serif"
                     >
                       {template.companyName}
@@ -1090,8 +1090,8 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       y1={padTop + 3.4}
                       x2={padLeft + safeW}
                       y2={padTop + 3.4}
-                      stroke="#cbd5e1"
-                      strokeWidth={0.2}
+                      stroke="#000000"
+                      strokeWidth={0.25}
                     />
                   )}
 
@@ -1101,8 +1101,8 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       x={padLeft}
                       y={padTop + 5.2}
                       fontSize={1.8}
-                      fontWeight="600"
-                      fill="#64748b"
+                      fontWeight="bold"
+                      fill="#000000"
                       fontFamily="Helvetica, Arial, sans-serif"
                     >
                       {template.subtitleText}
@@ -1121,10 +1121,10 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                         : 3.0
                     }
                     fontWeight="bold"
-                    fill="#0f172a"
+                    fill="#000000"
                     fontFamily="Helvetica, Arial, sans-serif"
                   >
-                    BOV Tube Hub Base (20C)
+                    Product Name
                   </text>
 
                   {/* Product Code / REF */}
@@ -1132,13 +1132,13 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                     <g transform={`translate(${padLeft}, ${padTop + (template.showSubtitle ? 11.2 : 9.8)})`}>
                       {template.isoSymbols.showRef ? (
                         <>
-                          <rect x={0} y={-2} width={5.5} height={2.6} fill="#f1f5f9" stroke="#334155" strokeWidth={0.15} />
-                          <text x={2.75} y={-0.3} fontSize={1.7} fontWeight="bold" fill="#0f172a" textAnchor="middle">REF</text>
-                          <text x={6.5} y={-0.3} fontSize={2.2} fill="#334155" fontFamily="monospace">00306-MED</text>
+                          <rect x={0} y={-2.2} width={5.5} height={2.6} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
+                          <text x={2.75} y={-0.3} fontSize={1.7} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">REF</text>
+                          <text x={6.5} y={-0.3} fontSize={2.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">REF-001</text>
                         </>
                       ) : (
-                        <text x={0} y={-0.3} fontSize={2.2} fill="#334155">
-                          {template.productCodeLabel || 'REF'}: 00306-MED
+                        <text x={0} y={-0.3} fontSize={2.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
+                          {template.productCodeLabel || 'REF'}: REF-001
                         </text>
                       )}
                     </g>
@@ -1149,13 +1149,13 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                     <g transform={`translate(${padLeft}, ${padTop + (template.showSubtitle ? 14.2 : 12.8)})`}>
                       {template.isoSymbols.showLot ? (
                         <>
-                          <rect x={0} y={-2} width={5.5} height={2.6} fill="#f1f5f9" stroke="#334155" strokeWidth={0.15} />
-                          <text x={2.75} y={-0.3} fontSize={1.7} fontWeight="bold" fill="#0f172a" textAnchor="middle">LOT</text>
-                          <text x={6.5} y={-0.3} fontSize={2.2} fill="#334155" fontFamily="monospace">APBT26I23</text>
+                          <rect x={0} y={-2.2} width={5.5} height={2.6} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
+                          <text x={2.75} y={-0.3} fontSize={1.7} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">LOT</text>
+                          <text x={6.5} y={-0.3} fontSize={2.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">LOT-2409</text>
                         </>
                       ) : (
-                        <text x={0} y={-0.3} fontSize={2.2} fill="#334155">
-                          {template.batchCodeLabel || 'LOT'}: APBT26I23
+                        <text x={0} y={-0.3} fontSize={2.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
+                          {template.batchCodeLabel || 'LOT'}: LOT-2409
                         </text>
                       )}
                     </g>
@@ -1168,10 +1168,10 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       y={padTop + (template.showSubtitle ? 17.2 : 15.8)}
                       fontSize={2.3}
                       fontWeight="bold"
-                      fill="#0f172a"
+                      fill="#000000"
                       fontFamily="Helvetica, Arial, sans-serif"
                     >
-                      {template.caseNumberPrefix || 'CASE NO: #'}12
+                      {template.caseNumberPrefix || 'CASE NO: #'}1
                     </text>
                   )}
 
@@ -1182,7 +1182,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       y={padTop + (template.showSubtitle ? 20.2 : 18.8)}
                       fontSize={2.5}
                       fontWeight="bold"
-                      fill="#0f172a"
+                      fill="#000000"
                       fontFamily="Helvetica, Arial, sans-serif"
                     >
                       {template.quantityLabel || 'QTY:'} 500 PCS
@@ -1201,8 +1201,8 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       if (template.isoSymbols.showMd) {
                         icons.push(
                           <g key="md" transform={`translate(${curX}, 0)`}>
-                            <rect x={0} y={-iconH} width={5.2} height={iconH} fill="#f8fafc" stroke="#1e293b" strokeWidth={0.2} rx={0.3} />
-                            <text x={2.6} y={-1.2} fontSize={2.1} fontWeight="bold" fill="#0f172a" textAnchor="middle">MD</text>
+                            <rect x={0} y={-iconH} width={5.2} height={iconH} fill="#ffffff" stroke="#000000" strokeWidth={0.25} rx={0.3} />
+                            <text x={2.6} y={-1.2} fontSize={2.1} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">MD</text>
                           </g>
                         );
                         curX += 6.0;
@@ -1212,9 +1212,9 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       if (template.isoSymbols.showSingleUse) {
                         icons.push(
                           <g key="su" transform={`translate(${curX}, 0)`}>
-                            <circle cx={1.8} cy={-1.8} r={1.8} fill="#f8fafc" stroke="#1e293b" strokeWidth={0.2} />
-                            <text x={1.8} y={-1.1} fontSize={2.2} fontWeight="bold" fill="#0f172a" textAnchor="middle">2</text>
-                            <line x1={0.5} y1={-0.5} x2={3.1} y2={-3.1} stroke="#1e293b" strokeWidth={0.2} />
+                            <circle cx={1.8} cy={-1.8} r={1.8} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
+                            <text x={1.8} y={-1.1} fontSize={2.2} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">2</text>
+                            <line x1={0.5} y1={-0.5} x2={3.1} y2={-3.1} stroke="#000000" strokeWidth={0.25} />
                           </g>
                         );
                         curX += 4.5;
@@ -1224,7 +1224,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       if (template.isoSymbols.showManufacturer) {
                         icons.push(
                           <g key="mfg" transform={`translate(${curX}, 0)`}>
-                            <path d="M0,0 L0,-2 L1.3,-3 L1.3,-2 L2.6,-3 L2.6,-1.5 L3.6,-1.5 L3.6,0 Z" fill="#1e293b" />
+                            <path d="M0,0 L0,-2 L1.3,-3 L1.3,-2 L2.6,-3 L2.6,-1.5 L3.6,-1.5 L3.6,0 Z" fill="#000000" />
                           </g>
                         );
                         curX += 4.5;
@@ -1234,10 +1234,10 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       if (template.isoSymbols.showExpiryDate) {
                         icons.push(
                           <g key="exp" transform={`translate(${curX}, 0)`}>
-                            <line x1={0} y1={-iconH} x2={3} y2={-iconH} stroke="#1e293b" strokeWidth={0.25} />
-                            <line x1={0} y1={0} x2={3} y2={0} stroke="#1e293b" strokeWidth={0.25} />
-                            <line x1={0} y1={-iconH} x2={3} y2={0} stroke="#1e293b" strokeWidth={0.25} />
-                            <line x1={3} y1={-iconH} x2={0} y2={0} stroke="#1e293b" strokeWidth={0.25} />
+                            <line x1={0} y1={-iconH} x2={3} y2={-iconH} stroke="#000000" strokeWidth={0.25} />
+                            <line x1={0} y1={0} x2={3} y2={0} stroke="#000000" strokeWidth={0.25} />
+                            <line x1={0} y1={-iconH} x2={3} y2={0} stroke="#000000" strokeWidth={0.25} />
+                            <line x1={3} y1={-iconH} x2={0} y2={0} stroke="#000000" strokeWidth={0.25} />
                           </g>
                         );
                         curX += 4.0;
@@ -1247,9 +1247,9 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       if (template.isoSymbols.showKeepDry) {
                         icons.push(
                           <g key="dry" transform={`translate(${curX}, 0)`}>
-                            <path d="M0,-1.8 Q1.7,-3.6 3.4,-1.8 Z" fill="#1e293b" />
-                            <line x1={1.7} y1={-1.8} x2={1.7} y2={0} stroke="#1e293b" strokeWidth={0.25} />
-                            <path d="M1.7,0 Q1.2,0.4 0.9,0" fill="none" stroke="#1e293b" strokeWidth={0.25} />
+                            <path d="M0,-1.8 Q1.7,-3.6 3.4,-1.8 Z" fill="#000000" />
+                            <line x1={1.7} y1={-1.8} x2={1.7} y2={0} stroke="#000000" strokeWidth={0.25} />
+                            <path d="M1.7,0 Q1.2,0.4 0.9,0" fill="none" stroke="#000000" strokeWidth={0.25} />
                           </g>
                         );
                         curX += 4.2;
@@ -1260,8 +1260,8 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                         const st = template.isoSymbols.sterileType || 'NON-STERILE';
                         icons.push(
                           <g key="ste" transform={`translate(${curX}, 0)`}>
-                            <rect x={0} y={-iconH} width={13} height={iconH} fill="#f8fafc" stroke="#1e293b" strokeWidth={0.2} />
-                            <text x={6.5} y={-1.2} fontSize={1.7} fontWeight="bold" fill="#0f172a" textAnchor="middle">
+                            <rect x={0} y={-iconH} width={13} height={iconH} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
+                            <text x={6.5} y={-1.2} fontSize={1.7} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">
                               {st === 'NON-STERILE' ? 'NON-STERILE' : `STERILE|${st}`}
                             </text>
                           </g>
@@ -1273,9 +1273,9 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       if (template.isoSymbols.showCeMark) {
                         icons.push(
                           <g key="ce" transform={`translate(${curX}, 0)`}>
-                            <text x={0} y={-1.0} fontSize={3.2} fontWeight="bold" fill="#0f172a">CE</text>
+                            <text x={0} y={-1.0} fontSize={3.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">CE</text>
                             {template.isoSymbols.notifiedBodyNumber && (
-                              <text x={0} y={1.2} fontSize={1.2} fill="#64748b">{template.isoSymbols.notifiedBodyNumber}</text>
+                              <text x={0} y={1.2} fontSize={1.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">{template.isoSymbols.notifiedBodyNumber}</text>
                             )}
                           </g>
                         );
@@ -1289,11 +1289,11 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                   {/* QC Approval Box */}
                   {template.showQcApproval && (
                     <g transform={`translate(${padLeft}, ${lH - padBottom - 1.5})`}>
-                      <rect x={0} y={-3.2} width={3.2} height={3.2} fill="#ffffff" stroke="#64748b" strokeWidth={0.2} />
-                      <text x={4.0} y={-1.0} fontSize={1.8} fontWeight="bold" fill="#475569">
+                      <rect x={0} y={-3.2} width={3.2} height={3.2} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
+                      <text x={4.0} y={-1.0} fontSize={1.8} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
                         {template.qcApprovalText || 'QC APPROVED'}
                       </text>
-                      <text x={0} y={1.2} fontSize={1.6} fill="#64748b">
+                      <text x={0} y={1.2} fontSize={1.6} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
                         Sign: ___________________
                       </text>
                     </g>
@@ -1320,7 +1320,8 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       x={padLeft}
                       y={lH - padBottom + 1.2}
                       fontSize={1.4}
-                      fill="#64748b"
+                      fontWeight="bold"
+                      fill="#000000"
                       fontFamily="Helvetica, Arial, sans-serif"
                     >
                       {template.customFooterText.substring(0, 50)}

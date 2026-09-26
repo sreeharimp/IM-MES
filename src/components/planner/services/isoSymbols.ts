@@ -110,9 +110,9 @@ export function drawIsoSymbolOnPdf(
   height: number,
   config?: IsoSymbolsConfig
 ): void {
-  doc.setDrawColor(30, 41, 59);
-  doc.setTextColor(30, 41, 59);
-  doc.setLineWidth(0.18);
+  doc.setDrawColor(0, 0, 0);
+  doc.setTextColor(0, 0, 0);
+  doc.setLineWidth(0.2);
 
   switch (symbolKey) {
     case 'MD': {
