@@ -68,7 +68,7 @@ export const DEFAULT_LABEL_TEMPLATE: LabelTemplateConfig = {
   quantityLabel: 'QTY:',
   showMouldDetails: false,
   showQcApproval: true,
-  qcApprovalText: 'QC APPROVED',
+  qcApprovalText: 'APPROVED',
   showQrCode: true,
   qrCodePosition: 'right',
   qrSizeMm: 14,

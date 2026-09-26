@@ -291,7 +291,7 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
 
       // 6. ISO 15223-1 Symbols Tray
       let isoX = contentX;
-      const isoY = y + lH - padBottom - (tpl.showQcApproval ? 8.2 : 4.5);
+      const isoY = y + lH - padBottom - (tpl.showQcApproval ? 5.2 : 4.5);
       const symH = 3.4;
 
       if (tpl.isoSymbols.showMd) {
@@ -323,17 +323,22 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
         isoX += 6.0;
       }
 
-      // 7. QC Approval Area
+      // 7. QC Status Line (Single Line: QC STATUS: APPROVED │ Inspected by :)
       if (tpl.showQcApproval) {
         doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(5.2);
+        doc.setFontSize(5.0);
         doc.setTextColor(0, 0, 0);
-        const qcY = y + lH - padBottom - 1.5;
+        const qcY = y + lH - padBottom - 0.8;
+        const statusText = `QC STATUS: ${tpl.qcApprovalText || 'APPROVED'}`;
+        doc.text(statusText, contentX, qcY);
+
+        // Vertical divider
+        const sepX = contentX + Math.max(26, contentW * 0.44);
         doc.setDrawColor(0, 0, 0);
         doc.setLineWidth(0.2);
-        doc.rect(contentX, Math.max(contentY + 12, qcY - 2.8), 2.8, 2.8);
-        doc.text(tpl.qcApprovalText || 'QC APPROVED', contentX + 3.6, Math.max(contentY + 12, qcY - 0.7));
-        doc.text('Sign: ____________', contentX, y + lH - padBottom);
+        doc.line(sepX, qcY - 2.0, sepX, qcY + 0.3);
+
+        doc.text('Inspected by : ', sepX + 2.5, qcY);
       }
 
       // 8. QR Code (QR payload format: batch_code-case_number)

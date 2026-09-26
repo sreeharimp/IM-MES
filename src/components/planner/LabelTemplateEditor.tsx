@@ -692,7 +692,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                   <Grid size={{ xs: 12 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
-                        Quality Control Approval Area
+                        Quality Control Status Bar
                       </Typography>
                       <FormControlLabel
                         control={
@@ -701,7 +701,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                             onChange={(e) => setTemplate({ ...template, showQcApproval: e.target.checked })}
                           />
                         }
-                        label={<Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>Include QC Stamp & Sign</Typography>}
+                        label={<Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>Show QC Status Line</Typography>}
                       />
                     </Box>
                   </Grid>
@@ -709,11 +709,12 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                   {template.showQcApproval && (
                     <Grid size={{ xs: 12 }}>
                       <TextField
-                        label="QC Stamp Title"
+                        label="QC Status Text"
                         size="small"
                         fullWidth
-                        value={template.qcApprovalText || 'QC APPROVED'}
+                        value={template.qcApprovalText || 'APPROVED'}
                         onChange={(e) => setTemplate({ ...template, qcApprovalText: e.target.value })}
+                        helperText="Displays as: QC STATUS: [STATUS] │ Inspected by :"
                       />
                     </Grid>
                   )}
@@ -1190,7 +1191,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                   )}
 
                   {/* ISO 15223-1 Symbols Row (Above footer or QC) */}
-                  <g transform={`translate(${padLeft}, ${lH - padBottom - (template.showQcApproval ? 8 : 4.5)})`}>
+                  <g transform={`translate(${padLeft}, ${lH - padBottom - (template.showQcApproval ? 5.2 : 4.5)})`}>
                     {/* Render active ISO symbol icons in a neat millimetric cluster */}
                     {(() => {
                       const icons: JSX.Element[] = [];
@@ -1286,15 +1287,36 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                     })()}
                   </g>
 
-                  {/* QC Approval Box */}
+                  {/* QC Status Line (Single Line: QC STATUS: APPROVED │ Inspected by :) */}
                   {template.showQcApproval && (
-                    <g transform={`translate(${padLeft}, ${lH - padBottom - 1.5})`}>
-                      <rect x={0} y={-3.2} width={3.2} height={3.2} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
-                      <text x={4.0} y={-1.0} fontSize={1.8} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
-                        {template.qcApprovalText || 'QC APPROVED'}
+                    <g transform={`translate(${padLeft}, ${lH - padBottom - 1.2})`}>
+                      <text
+                        x={0}
+                        y={0}
+                        fontSize={1.8}
+                        fontWeight="bold"
+                        fill="#000000"
+                        fontFamily="Helvetica, Arial, sans-serif"
+                      >
+                        QC STATUS: {template.qcApprovalText || 'APPROVED'}
                       </text>
-                      <text x={0} y={1.2} fontSize={1.6} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
-                        Sign: ___________________
+                      <line
+                        x1={Math.max(26, safeW * 0.44)}
+                        y1={-2.0}
+                        x2={Math.max(26, safeW * 0.44)}
+                        y2={0.3}
+                        stroke="#000000"
+                        strokeWidth={0.2}
+                      />
+                      <text
+                        x={Math.max(26, safeW * 0.44) + 2.5}
+                        y={0}
+                        fontSize={1.8}
+                        fontWeight="bold"
+                        fill="#000000"
+                        fontFamily="Helvetica, Arial, sans-serif"
+                      >
+                        Inspected by : 
                       </text>
                     </g>
                   )}
