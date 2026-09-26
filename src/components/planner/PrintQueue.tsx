@@ -24,6 +24,9 @@ import {
   CircularProgress,
   Grid,
   Tooltip,
+  Switch,
+  FormControlLabel,
+  IconButton,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -37,6 +40,9 @@ import {
   WarningAmber as WarningIcon,
   Delete as RemoveIcon,
   RemoveFromQueue as RemoveQueueIcon,
+  KeyboardArrowDown as ExpandMoreIcon,
+  KeyboardArrowUp as ExpandLessIcon,
+  Folder as BatchFolderIcon,
 } from '@mui/icons-material';
 import type { LabelPaperType, ProductionPlanLabel, ProductLabelType } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -198,6 +204,75 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
       return true;
     });
   }, [queueLabels, activePaper, productPaperMappings]);
+
+  // Group by batch view mode
+  const [groupByBatch, setGroupByBatch] = useState<boolean>(true);
+  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
+
+  interface BatchGroup {
+    batch_code: string;
+    product_name: string;
+    item_code?: string;
+    production_date: string;
+    labels: QueueItem[];
+    totalQuantity: number;
+  }
+
+  const batchGroups = useMemo(() => {
+    const map = new Map<string, BatchGroup>();
+
+    filteredLabels.forEach((label) => {
+      const key = `${label.batch_code || 'NO-BATCH'}___${label.product_name}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          batch_code: label.batch_code || 'NO-BATCH',
+          product_name: label.product_name,
+          item_code: label.item_code,
+          production_date: label.production_date,
+          labels: [],
+          totalQuantity: 0,
+        });
+      }
+      const group = map.get(key)!;
+      group.labels.push(label);
+      group.totalQuantity += label.expected_quantity || 0;
+    });
+
+    return Array.from(map.values());
+  }, [filteredLabels]);
+
+  // Expand all batches by default when loaded
+  useEffect(() => {
+    if (batchGroups.length > 0) {
+      setExpandedBatches(new Set(batchGroups.map((g) => g.batch_code)));
+    }
+  }, [batchGroups.length]);
+
+  const toggleBatchExpand = (batchCode: string) => {
+    setExpandedBatches((prev) => {
+      const next = new Set(prev);
+      if (next.has(batchCode)) {
+        next.delete(batchCode);
+      } else {
+        next.add(batchCode);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectBatch = (group: BatchGroup, checked: boolean) => {
+    setSelectedLabelIds((prev) => {
+      const next = new Set(prev);
+      group.labels.forEach((l) => {
+        if (checked) {
+          next.add(l.id);
+        } else {
+          next.delete(l.id);
+        }
+      });
+      return next;
+    });
+  };
 
   const sheetCapacity = (activePaper?.rows || 8) * (activePaper?.columns || 3);
   const skipSlotsSheet1 = useMemo(() => {
@@ -738,6 +813,49 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
               <MenuItem value="all">All Dates</MenuItem>
               <MenuItem value="window">3-Day Window</MenuItem>
             </TextField>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', ml: 1, pl: 1.5, borderLeft: '1px solid var(--border, #2e3340)', gap: 1 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={groupByBatch}
+                    onChange={(e) => setGroupByBatch(e.target.checked)}
+                    size="small"
+                    color="primary"
+                  />
+                }
+                label={
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)', whiteSpace: 'nowrap' }}>
+                    Group by Batch
+                  </Typography>
+                }
+                sx={{ mr: 0 }}
+              />
+
+              {groupByBatch && (
+                <>
+                  <Chip
+                    size="small"
+                    label={`${batchGroups.length} Batches`}
+                    sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600, bgcolor: 'rgba(77, 159, 255, 0.15)', color: 'var(--blue, #4d9fff)' }}
+                  />
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      if (expandedBatches.size === batchGroups.length) {
+                        setExpandedBatches(new Set());
+                      } else {
+                        setExpandedBatches(new Set(batchGroups.map((g) => g.batch_code)));
+                      }
+                    }}
+                    sx={{ fontSize: '0.75rem', color: 'var(--blue, #4d9fff)', textTransform: 'none', px: 1, minWidth: 'auto' }}
+                  >
+                    {expandedBatches.size === batchGroups.length ? 'Collapse All' : 'Expand All'}
+                  </Button>
+                </>
+              )}
+            </Box>
           </Box>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
@@ -832,62 +950,217 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredLabels.map((l) => {
-                const isSelected = selectedLabelIds.has(l.id);
-                return (
-                  <TableRow
-                    key={l.id}
-                    hover
-                    selected={isSelected}
-                    onClick={() => handleToggleLabel(l.id)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell padding="checkbox">
-                      <Checkbox checked={isSelected} />
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
-                      CASE #{l.sequence_number}
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)' }}>
-                      {l.product_name}
-                      {l.item_code && (
-                        <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)', display: 'block' }}>
-                          Code: {l.item_code}
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--blue, #4d9fff)' }}>
-                      {l.batch_code}
-                    </TableCell>
-                    <TableCell sx={{ color: 'var(--text, #e2e6f0)' }}>{l.production_date}</TableCell>
-                    <TableCell>
-                      {l.is_partial ? (
+              {groupByBatch ? (
+                batchGroups.map((group) => {
+                  const isExpanded = expandedBatches.has(group.batch_code);
+                  const selectedInGroup = group.labels.filter((l) => selectedLabelIds.has(l.id)).length;
+                  const isAllGroupSelected = group.labels.length > 0 && selectedInGroup === group.labels.length;
+                  const isPartialGroupSelected = selectedInGroup > 0 && selectedInGroup < group.labels.length;
+
+                  return (
+                    <React.Fragment key={group.batch_code}>
+                      {/* Batch Group Summary Row */}
+                      <TableRow
+                        sx={{
+                          bgcolor: 'rgba(77, 159, 255, 0.08)',
+                          borderTop: '2px solid var(--border, #2e3340)',
+                          borderBottom: isExpanded ? '1px solid var(--border, #2e3340)' : 'none',
+                          '&:hover': { bgcolor: 'rgba(77, 159, 255, 0.14)' },
+                        }}
+                      >
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={isAllGroupSelected}
+                            indeterminate={isPartialGroupSelected}
+                            onChange={(e) => handleSelectBatch(group, e.target.checked)}
+                          />
+                        </TableCell>
+                        <TableCell colSpan={7}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                            <Box
+                              sx={{ display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer' }}
+                              onClick={() => toggleBatchExpand(group.batch_code)}
+                            >
+                              <IconButton size="small" sx={{ p: 0.5, color: 'var(--blue, #4d9fff)' }}>
+                                {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                              </IconButton>
+                              <Chip
+                                icon={<BatchFolderIcon sx={{ fontSize: '15px !important' }} />}
+                                label={`BATCH: ${group.batch_code}`}
+                                size="small"
+                                sx={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 700,
+                                  bgcolor: 'rgba(77, 159, 255, 0.2)',
+                                  color: 'var(--blue, #4d9fff)',
+                                  border: '1px solid rgba(77, 159, 255, 0.4)',
+                                }}
+                              />
+                              <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
+                                {group.product_name}
+                              </Typography>
+                              {group.item_code && (
+                                <Chip
+                                  label={group.item_code}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ height: 20, fontSize: '0.7rem', color: 'var(--text2, #8a92a8)' }}
+                                />
+                              )}
+                            </Box>
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                              <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>
+                                Date: {group.production_date}
+                              </Typography>
+                              <Chip
+                                label={`${group.labels.length} Cases (${group.totalQuantity.toLocaleString()} PCS)`}
+                                size="small"
+                                sx={{ fontWeight: 600, bgcolor: 'var(--bg4, #252a35)', color: 'var(--text, #e2e6f0)' }}
+                              />
+                              <Chip
+                                label={
+                                  selectedInGroup === 0
+                                    ? '0 selected'
+                                    : selectedInGroup === group.labels.length
+                                    ? `All ${group.labels.length} selected`
+                                    : `${selectedInGroup}/${group.labels.length} selected`
+                                }
+                                size="small"
+                                color={selectedInGroup > 0 ? 'primary' : 'default'}
+                                variant={selectedInGroup > 0 ? 'filled' : 'outlined'}
+                                sx={{ fontWeight: 600 }}
+                              />
+                            </Box>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Case-by-case rows inside this batch when expanded */}
+                      {isExpanded &&
+                        group.labels.map((l) => {
+                          const isSelected = selectedLabelIds.has(l.id);
+                          return (
+                            <TableRow
+                              key={l.id}
+                              hover
+                              selected={isSelected}
+                              onClick={() => handleToggleLabel(l.id)}
+                              sx={{
+                                cursor: 'pointer',
+                                bgcolor: isSelected ? 'rgba(77, 159, 255, 0.12) !important' : 'inherit',
+                              }}
+                            >
+                              <TableCell padding="checkbox">
+                                <Checkbox checked={isSelected} />
+                              </TableCell>
+                              <TableCell sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)', pl: 4 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>↳</Typography>
+                                  CASE #{l.sequence_number}
+                                </Box>
+                              </TableCell>
+                              <TableCell sx={{ color: 'var(--text2, #8a92a8)', fontSize: '0.85rem' }}>
+                                {l.product_name}
+                                {l.item_code && (
+                                  <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)', display: 'block' }}>
+                                    Code: {l.item_code}
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--blue, #4d9fff)', fontSize: '0.85rem' }}>
+                                {l.batch_code}
+                              </TableCell>
+                              <TableCell sx={{ color: 'var(--text, #e2e6f0)' }}>{l.production_date}</TableCell>
+                              <TableCell>
+                                {l.is_partial ? (
+                                  <Chip
+                                    label={`${l.expected_quantity} PCS (PARTIAL)`}
+                                    color="warning"
+                                    size="small"
+                                    sx={{ fontWeight: 700, height: 22 }}
+                                  />
+                                ) : (
+                                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)' }}>
+                                    {l.expected_quantity} PCS
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text2, #8a92a8)' }}>
+                                {l.qr_payload}
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={l.status === 'printed' ? 'Printed' : 'Ready'}
+                                  color={l.status === 'printed' ? 'default' : 'info'}
+                                  size="small"
+                                  sx={{ fontSize: '0.7rem', height: 20 }}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                    </React.Fragment>
+                  );
+                })
+              ) : (
+                filteredLabels.map((l) => {
+                  const isSelected = selectedLabelIds.has(l.id);
+                  return (
+                    <TableRow
+                      key={l.id}
+                      hover
+                      selected={isSelected}
+                      onClick={() => handleToggleLabel(l.id)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell padding="checkbox">
+                        <Checkbox checked={isSelected} />
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
+                        CASE #{l.sequence_number}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)' }}>
+                        {l.product_name}
+                        {l.item_code && (
+                          <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)', display: 'block' }}>
+                            Code: {l.item_code}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--blue, #4d9fff)' }}>
+                        {l.batch_code}
+                      </TableCell>
+                      <TableCell sx={{ color: 'var(--text, #e2e6f0)' }}>{l.production_date}</TableCell>
+                      <TableCell>
+                        {l.is_partial ? (
+                          <Chip
+                            label={`${l.expected_quantity} PCS (PARTIAL)`}
+                            color="warning"
+                            size="small"
+                            sx={{ fontWeight: 700, height: 22 }}
+                          />
+                        ) : (
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)' }}>
+                            {l.expected_quantity} PCS
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text2, #8a92a8)' }}>
+                        {l.qr_payload}
+                      </TableCell>
+                      <TableCell>
                         <Chip
-                          label={`${l.expected_quantity} PCS (PARTIAL)`}
-                          color="warning"
+                          label={l.status === 'printed' ? 'Printed' : 'Ready'}
+                          color={l.status === 'printed' ? 'default' : 'info'}
                           size="small"
-                          sx={{ fontWeight: 700, height: 22 }}
+                          sx={{ fontSize: '0.7rem', height: 20 }}
                         />
-                      ) : (
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)' }}>
-                          {l.expected_quantity} PCS
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text2, #8a92a8)' }}>
-                      {l.qr_payload}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label="Ready"
-                        color="info"
-                        size="small"
-                        sx={{ fontSize: '0.7rem', height: 20 }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         )}
