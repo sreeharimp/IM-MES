@@ -59,8 +59,9 @@ export const PaperScalePreview: React.FC<PaperScalePreviewProps> = ({ paper }) =
                     width={lW}
                     height={lH}
                     fill="#f8fafc"
-                    stroke="#94a3b8"
-                    strokeWidth={0.3}
+                    stroke={paper.show_borders === false ? '#cbd5e1' : '#94a3b8'}
+                    strokeWidth={paper.show_borders === false ? 0.2 : 0.35}
+                    strokeDasharray={paper.show_borders === false ? '0.8,0.8' : undefined}
                     rx={1}
                   />
 
@@ -103,12 +104,15 @@ export const PaperScalePreview: React.FC<PaperScalePreviewProps> = ({ paper }) =
           })}
         </svg>
       </Box>
-      <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+      <Box sx={{ mt: 1, display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
           Scale: {pW} × {pH} mm
         </Typography>
         <Typography variant="caption" sx={{ color: '#0284c7', fontWeight: 600 }}>
           • Safe zone (pad: {padTop}mm)
+        </Typography>
+        <Typography variant="caption" sx={{ color: paper.show_borders === false ? '#f59e0b' : '#10b981', fontWeight: 600 }}>
+          • Outline: {paper.show_borders === false ? 'OFF (no borders)' : 'ON (borders)'}
         </Typography>
       </Box>
     </Box>

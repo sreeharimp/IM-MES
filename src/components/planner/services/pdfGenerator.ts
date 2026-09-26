@@ -53,7 +53,7 @@ export function downloadPDFDoc(doc: jsPDF, filename: string): void {
   let downloadItem: Blob = blob;
   try {
     downloadItem = new File([buffer], safeFilename, { type: 'application/pdf' });
-  } catch (_) {
+  } catch {
     downloadItem = blob;
   }
 
@@ -70,7 +70,9 @@ export function downloadPDFDoc(doc: jsPDF, filename: string): void {
     try {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (_) {}
+    } catch {
+      // URL might already be revoked
+    }
   }, 45000);
 }
 
@@ -110,17 +112,34 @@ export function getSlotOffset(
 export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsPDF> {
   const { labels, paper, startRow = 1, startCol = 1 } = options;
 
-  let tpl: LabelTemplateConfig = options.template || (paper as any)?.template_config || DEFAULT_LABEL_TEMPLATE;
+  // Group by product, then batch, with case numbers strictly in ascending order (Case #1, #2, #3...)
+  const sortedLabels = [...labels].sort((a, b) => {
+    const prodA = (a.productName || '').trim().toLowerCase();
+    const prodB = (b.productName || '').trim().toLowerCase();
+    if (prodA !== prodB) return prodA.localeCompare(prodB);
+
+    const batchA = (a.batchCode || '').trim().toLowerCase();
+    const batchB = (b.batchCode || '').trim().toLowerCase();
+    if (batchA !== batchB) return batchA.localeCompare(batchB);
+
+    const seqA = Number(a.sequenceNumber) || 0;
+    const seqB = Number(b.sequenceNumber) || 0;
+    return seqA - seqB;
+  });
+
+  let tpl: LabelTemplateConfig = options.template || paper?.template_config || DEFAULT_LABEL_TEMPLATE;
   if (!options.template) {
-    if ((paper as any)?.template_config && typeof (paper as any).template_config === 'object') {
-      tpl = (paper as any).template_config;
+    if (paper?.template_config && typeof paper.template_config === 'object') {
+      tpl = paper.template_config as LabelTemplateConfig;
     } else if (paper?.id) {
       try {
         const saved =
           localStorage.getItem(`label_template_${paper.id}`) ||
           localStorage.getItem('label_template_global');
         if (saved) tpl = JSON.parse(saved);
-      } catch (_) {}
+      } catch {
+        // Fallback to default template if parsing fails
+      }
     }
   }
 
@@ -148,14 +167,14 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
   const sheet1Capacity = Math.max(0, slotsPerPage - skipSlotsSheet1);
 
   let totalSheets = 1;
-  if (labels.length > sheet1Capacity) {
-    const remainingAfterSheet1 = labels.length - sheet1Capacity;
+  if (sortedLabels.length > sheet1Capacity) {
+    const remainingAfterSheet1 = sortedLabels.length - sheet1Capacity;
     totalSheets = 1 + Math.ceil(remainingAfterSheet1 / slotsPerPage);
   }
 
   // Pre-generate QR code data URLs asynchronously
   const qrMap = new Map<string, string>();
-  for (const label of labels) {
+  for (const label of sortedLabels) {
     try {
       const dataUrl = await QRCode.toDataURL(label.qrPayload, {
         width: 140,
@@ -178,11 +197,11 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
     const startSlot = sheetIdx === 0 ? skipSlotsSheet1 : 0;
 
     for (let slot = startSlot; slot < slotsPerPage; slot++) {
-      if (labelCursor >= labels.length) {
+      if (labelCursor >= sortedLabels.length) {
         break; // All labels printed
       }
 
-      const label = labels[labelCursor];
+      const label = sortedLabels[labelCursor];
       labelCursor++;
 
       // Determine row and col for this slot
@@ -200,10 +219,13 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       const x = mL + c * (lW + gX);
       const y = mT + r * (lH + gY);
 
-      // Draw light guide boundary
-      doc.setDrawColor(210, 215, 220);
-      doc.setLineWidth(0.15);
-      doc.rect(x, y, lW, lH);
+      // Draw light guide boundary if enabled in paper settings (default: true)
+      const showBorders = paper.show_borders !== false;
+      if (showBorders) {
+        doc.setDrawColor(210, 215, 220);
+        doc.setLineWidth(0.15);
+        doc.rect(x, y, lW, lH);
+      }
 
       // Inner padding
       const padTop = Number(paper.padding_top_mm ?? paper.internal_padding_mm ?? 1.8);
@@ -374,7 +396,7 @@ export async function buildLabelsPDFDoc(options: RenderLabelOptions): Promise<js
   const items: PrintableLabelItem[] = labels.map((l) => ({
     id: l.id,
     productName: productName || plan.product_name || 'Moulded Part',
-    batchCode: (l as any).batch_code || plan.batch_code || '',
+    batchCode: ((l as unknown as Record<string, unknown>).batch_code as string) || plan.batch_code || '',
     sequenceNumber: l.sequence_number,
     expectedQuantity: l.expected_quantity,
     isPartial: l.is_partial,

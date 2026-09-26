@@ -354,6 +354,7 @@ export interface LabelPaperType {
   padding_right_mm?: number;
   padding_bottom_mm?: number;
   template_config?: any;
+  show_borders?: boolean;
   created_by?: string;
   created_at: string;
 }

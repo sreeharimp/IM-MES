@@ -57,6 +57,7 @@ const DEFAULT_FORM_DATA: Partial<LabelPaperType> = {
   gutter_y_mm: 0,
   fill_order: 'row-major',
   active: true,
+  show_borders: true,
   internal_padding_mm: 1.8,
   padding_top_mm: 1.8,
   padding_left_mm: 1.8,
@@ -88,16 +89,22 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
         .order('name', { ascending: true });
 
       if (error) throw error;
-      const loaded: LabelPaperType[] = (data || []).map((p: any) => {
-        let localPad: any = null;
+      const loaded: LabelPaperType[] = ((data as unknown as LabelPaperType[]) || []).map((p) => {
+        let localPad: Record<string, number> | null = null;
+        let localBorders: boolean | null = null;
         try {
           const saved = localStorage.getItem(`paper_pad_${p.id}`);
           if (saved) localPad = JSON.parse(saved);
-        } catch (_) {}
+          const savedB = localStorage.getItem(`paper_borders_${p.id}`);
+          if (savedB !== null) localBorders = savedB === 'true';
+        } catch {
+          // ignore localStorage error
+        }
 
         const intPad = p.internal_padding_mm ?? localPad?.internal_padding_mm ?? 1.8;
         return {
           ...p,
+          show_borders: p.show_borders ?? localBorders ?? true,
           internal_padding_mm: intPad,
           padding_top_mm: p.padding_top_mm ?? localPad?.padding_top_mm ?? intPad,
           padding_left_mm: p.padding_left_mm ?? localPad?.padding_left_mm ?? intPad,
@@ -113,7 +120,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
         const updated = loaded.find((p) => p.id === previewPaper.id);
         if (updated) setPreviewPaper(updated);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading papers:', err);
     }
   };
@@ -158,6 +165,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
       gutter_y_mm: paper.gutter_y_mm || 0,
       fill_order: paper.fill_order || 'row-major',
       active: paper.active ?? true,
+      show_borders: paper.show_borders !== false,
       internal_padding_mm: intPad,
       padding_top_mm: topPad,
       padding_left_mm: leftPad,
@@ -178,8 +186,40 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
         .eq('id', paper.id);
       if (error) throw error;
       await fetchPapers();
-    } catch (err: any) {
-      alert(err.message || 'Failed to update status.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(msg || 'Failed to update status.');
+    }
+  };
+
+  const handleToggleBorders = async (paper: LabelPaperType, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const nextBorders = paper.show_borders === false ? true : false;
+      const { error } = await supabase
+        .from('label_paper_types')
+        .update({ show_borders: nextBorders })
+        .eq('id', paper.id);
+
+      if (error && (error.code === 'PGRST204' || error.message?.includes('column'))) {
+        try {
+          localStorage.setItem(`paper_borders_${paper.id}`, String(nextBorders));
+        } catch {
+          // ignore storage error
+        }
+      } else if (error) {
+        throw error;
+      } else {
+        try {
+          localStorage.setItem(`paper_borders_${paper.id}`, String(nextBorders));
+        } catch {
+          // ignore storage error
+        }
+      }
+      await fetchPapers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(msg || 'Failed to update border setting.');
     }
   };
 
@@ -199,17 +239,21 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
 
       try {
         localStorage.removeItem(`paper_pad_${paper.id}`);
-      } catch (_) {}
+        localStorage.removeItem(`paper_borders_${paper.id}`);
+      } catch {
+        // ignore storage error
+      }
 
       if (previewPaper?.id === paper.id) {
         setPreviewPaper(null);
       }
       await fetchPapers();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errObj = err as Record<string, unknown>;
       const isFkError =
-        err?.code === '23503' ||
-        err?.message?.includes('foreign key constraint') ||
-        err?.message?.includes('label_print_jobs');
+        errObj?.code === '23503' ||
+        (typeof errObj?.message === 'string' &&
+          (errObj.message.includes('foreign key constraint') || errObj.message.includes('label_print_jobs')));
 
       if (isFkError) {
         const shouldDeactivate = window.confirm(
@@ -219,12 +263,14 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
           try {
             await supabase.from('label_paper_types').update({ active: false }).eq('id', paper.id);
             await fetchPapers();
-          } catch (deactErr: any) {
-            alert('Failed to deactivate format: ' + deactErr.message);
+          } catch (deactErr: unknown) {
+            const deactMsg = deactErr instanceof Error ? deactErr.message : String(deactErr);
+            alert('Failed to deactivate format: ' + deactMsg);
           }
         }
       } else {
-        alert(err.message || 'Failed to delete paper format. It may be linked to existing printed labels.');
+        const msg = err instanceof Error ? err.message : String(err);
+        alert(msg || 'Failed to delete paper format. It may be linked to existing printed labels.');
       }
     }
   };
@@ -243,6 +289,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
     const padLeft = Number(formData.padding_left_mm ?? intPad);
     const padRight = Number(formData.padding_right_mm ?? intPad);
     const padBottom = Number(formData.padding_bottom_mm ?? intPad);
+    const showBorders = formData.show_borders !== false;
 
     const basePayload = {
       name: formData.name.trim(),
@@ -258,6 +305,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
       gutter_y_mm: Number(formData.gutter_y_mm) || 0,
       fill_order: formData.fill_order || 'row-major',
       active: formData.active ?? true,
+      show_borders: showBorders,
     };
 
     const fullPayload = {
@@ -269,7 +317,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
       padding_bottom_mm: padBottom,
     };
 
-    const saveLocalPadding = (paperId: string) => {
+    const saveLocalSettings = (paperId: string) => {
       try {
         localStorage.setItem(
           `paper_pad_${paperId}`,
@@ -281,12 +329,15 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
             padding_bottom_mm: padBottom,
           })
         );
-      } catch (_) {}
+        localStorage.setItem(`paper_borders_${paperId}`, String(showBorders));
+      } catch {
+        // ignore localStorage error
+      }
     };
 
     try {
       if (editingPaper?.id) {
-        // Try full payload with padding columns
+        // Try full payload with padding and border columns
         let res = await supabase
           .from('label_paper_types')
           .update(fullPayload)
@@ -294,24 +345,30 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
           .select()
           .single();
 
-        // If DB doesn't have the column yet, fallback to base payload
+        // If DB doesn't have all new columns yet, fallback to base payload without padding
         if (res.error && (res.error.code === 'PGRST204' || res.error.message?.includes('column'))) {
+          // Try basePayload without show_borders if that column is missing too
+          const safeBase: Record<string, unknown> = { ...basePayload };
+          if (res.error.message?.includes('show_borders')) {
+            delete safeBase.show_borders;
+          }
           res = await supabase
             .from('label_paper_types')
-            .update(basePayload)
+            .update(safeBase)
             .eq('id', editingPaper.id)
             .select()
             .single();
         }
 
         if (res.error) throw res.error;
-        saveLocalPadding(editingPaper.id);
+        saveLocalSettings(editingPaper.id);
         await fetchPapers();
         setIsModalOpen(false);
         setEditingPaper(null);
         if (res.data) {
           setPreviewPaper({
             ...res.data,
+            show_borders: showBorders,
             internal_padding_mm: intPad,
             padding_top_mm: padTop,
             padding_left_mm: padLeft,
@@ -327,22 +384,27 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
           .single();
 
         if (res.error && (res.error.code === 'PGRST204' || res.error.message?.includes('column'))) {
+          const safeBase: Record<string, unknown> = { ...basePayload };
+          if (res.error.message?.includes('show_borders')) {
+            delete safeBase.show_borders;
+          }
           res = await supabase
             .from('label_paper_types')
-            .insert([{ ...basePayload, created_by: currentUserName }])
+            .insert([{ ...safeBase, created_by: currentUserName }])
             .select()
             .single();
         }
 
         if (res.error) throw res.error;
         if (res.data?.id) {
-          saveLocalPadding(res.data.id);
+          saveLocalSettings(res.data.id);
         }
         await fetchPapers();
         setIsModalOpen(false);
         if (res.data) {
           setPreviewPaper({
             ...res.data,
+            show_borders: showBorders,
             internal_padding_mm: intPad,
             padding_top_mm: padTop,
             padding_left_mm: padLeft,
@@ -351,8 +413,9 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
           });
         }
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to save paper format.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg || 'Failed to save paper format.');
     } finally {
       setSaving(false);
     }
@@ -418,6 +481,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Label Size (W×H)</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Margins (T/L)</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Internal Pad</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Borders</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Status</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)' }}>Actions</TableCell>
                 </TableRow>
@@ -425,7 +489,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
               <TableBody>
                 {papers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'var(--text2, #8a92a8)' }}>
+                    <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'var(--text2, #8a92a8)' }}>
                       No paper formats configured yet. Click "Add Custom Stock" to create one.
                     </TableCell>
                   </TableRow>
@@ -456,6 +520,18 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
                         {p.padding_top_mm !== p.padding_left_mm
                           ? `T:${p.padding_top_mm} L:${p.padding_left_mm}mm`
                           : `${p.internal_padding_mm ?? 1.8} mm`}
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title={canEdit ? `Click to ${p.show_borders !== false ? 'turn off outline borders' : 'turn on outline borders'}` : ''}>
+                          <Chip
+                            size="small"
+                            label={p.show_borders !== false ? 'Border On' : 'Border Off'}
+                            color={p.show_borders !== false ? 'info' : 'default'}
+                            variant="outlined"
+                            onClick={canEdit ? (e) => handleToggleBorders(p, e) : undefined}
+                            sx={{ height: 22, fontSize: '0.75rem', cursor: canEdit ? 'pointer' : 'default' }}
+                          />
+                        </Tooltip>
                       </TableCell>
                       <TableCell>
                         <Tooltip title={canEdit ? `Click to ${p.active ? 'deactivate' : 'activate'}` : ''}>
@@ -826,6 +902,32 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
               </Box>
             </Grid>
 
+            {/* ── Label Outline Borders ── */}
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ p: 1.5, bgcolor: 'var(--bg3, #1c2028)', borderRadius: 2, border: '1px solid var(--border, #2e3340)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'var(--text, #e2e6f0)' }}>
+                    Print Label Outline Borders
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'var(--text2, #8a92a8)' }}>
+                    {formData.show_borders !== false
+                      ? 'Enabled: A light rectangular cut-guide border will be printed around each label slot.'
+                      : 'Disabled: No outline borders printed (recommended for die-cut sticker sheets).'}
+                  </Typography>
+                </Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.show_borders !== false}
+                      onChange={(e) => setFormData({ ...formData, show_borders: e.target.checked })}
+                      color="primary"
+                    />
+                  }
+                  label={<Typography variant="body2" sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)' }}>{formData.show_borders !== false ? 'ON' : 'OFF'}</Typography>}
+                />
+              </Box>
+            </Grid>
+
             <Grid size={{ xs: 8 }}>
               <TextField
                 select
@@ -833,7 +935,7 @@ export const PaperManagement: React.FC<PaperManagementProps> = ({
                 fullWidth
                 size="small"
                 value={formData.fill_order || 'row-major'}
-                onChange={(e) => setFormData({ ...formData, fill_order: e.target.value as any })}
+                onChange={(e) => setFormData({ ...formData, fill_order: e.target.value as LabelPaperType['fill_order'] })}
               >
                 <MenuItem value="row-major">Row-Major (Left → Right, Top → Bottom)</MenuItem>
                 <MenuItem value="column-major">Column-Major (Top → Bottom, Left → Right)</MenuItem>

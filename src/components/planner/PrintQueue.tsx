@@ -12,6 +12,8 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  TablePagination,
+  InputAdornment,
   Checkbox,
   Chip,
   Alert,
@@ -34,7 +36,6 @@ import {
   AutoAwesome as AutoPackIcon,
   CheckCircle as SuccessIcon,
   Layers as SheetIcon,
-  Security as SupervisorIcon,
   FilterList as FilterIcon,
   Refresh as RefreshIcon,
   WarningAmber as WarningIcon,
@@ -43,6 +44,8 @@ import {
   KeyboardArrowDown as ExpandMoreIcon,
   KeyboardArrowUp as ExpandLessIcon,
   Folder as BatchFolderIcon,
+  Search as SearchIcon,
+  Clear as ClearIcon,
 } from '@mui/icons-material';
 import type { LabelPaperType, ProductionPlanLabel, ProductLabelType } from '../../types';
 import { supabase } from '../../lib/supabase';
@@ -85,9 +88,12 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
   const [removeDialog, setRemoveDialog] = useState<boolean>(false);
   const [isRemoving, setIsRemoving] = useState<boolean>(false);
 
-  // Queue view filters
-  const [statusFilter, setStatusFilter] = useState<'unprinted' | 'all'>('unprinted');
-  const [dateFilter, setDateFilter] = useState<'all' | 'window'>('all');
+  // Queue view filters & pagination
+  const [statusFilter, setStatusFilter] = useState<'unprinted' | 'all' | 'printed'>('unprinted');
+  const [dateFilter, setDateFilter] = useState<'all' | 'window' | 'today'>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [page, setPage] = useState<number>(0);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
 
   const fetchPaperData = async () => {
     try {
@@ -97,9 +103,22 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
         .eq('active', true)
         .order('name');
       if (pData && pData.length > 0) {
-        setPapers(pData);
+        const loaded: LabelPaperType[] = ((pData as unknown as LabelPaperType[]) || []).map((p) => {
+          let localBorders: boolean | null = null;
+          try {
+            const savedB = localStorage.getItem(`paper_borders_${p.id}`);
+            if (savedB !== null) localBorders = savedB === 'true';
+          } catch {
+            // Ignore localStorage parse error
+          }
+          return {
+            ...p,
+            show_borders: p.show_borders ?? localBorders ?? true,
+          };
+        });
+        setPapers(loaded);
         if (!selectedPaperId) {
-          setSelectedPaperId(pData[0].id);
+          setSelectedPaperId(loaded[0].id);
         }
       }
 
@@ -109,7 +128,7 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
       if (mapData) {
         setProductPaperMappings(mapData);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load paper configurations:', err);
     }
   };
@@ -135,47 +154,54 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
             )
           )
         `)
-        .order('created_at', { ascending: true });
+        // Latest First view
+        .order('created_at', { ascending: false });
 
       if (statusFilter === 'unprinted') {
         query = query.eq('status', 'unprinted');
+      } else if (statusFilter === 'printed') {
+        query = query.eq('status', 'printed');
       }
 
       const { data, error } = await query;
       if (error) throw error;
 
-      let items: QueueItem[] = (data || []).map((row: any) => {
-        const plan = row.plan || row.plan_day?.plan;
-        const prod = plan?.product;
-        const batchCode = plan?.batch_code || row.plan_day?.batch_code || 'BATCH';
-        const prodDate = plan?.plan_date || row.plan_day?.production_date || new Date().toISOString().split('T')[0];
+      let items: QueueItem[] = (data || []).map((row: Record<string, unknown>) => {
+        const plan = (row.plan || (row.plan_day as Record<string, unknown> | undefined)?.plan) as Record<string, unknown> | undefined;
+        const prod = plan?.product as Record<string, unknown> | undefined;
+        const batchCode = (plan?.batch_code as string) || ((row.plan_day as Record<string, unknown> | undefined)?.batch_code as string) || 'BATCH';
+        const prodDate = (plan?.plan_date as string) || ((row.plan_day as Record<string, unknown> | undefined)?.production_date as string) || new Date().toISOString().split('T')[0];
         return {
-          id: row.id,
-          plan_id: row.plan_id,
-          plan_day_id: row.plan_day_id || row.plan_id,
-          sequence_number: row.sequence_number,
-          expected_quantity: row.expected_quantity,
-          is_partial: row.is_partial,
-          qr_payload: row.qr_payload,
-          print_job_id: row.print_job_id,
-          status: row.status,
-          created_at: row.created_at,
+          id: row.id as string,
+          plan_id: row.plan_id as string,
+          plan_day_id: (row.plan_day_id as string) || (row.plan_id as string),
+          sequence_number: row.sequence_number as number,
+          expected_quantity: row.expected_quantity as number,
+          is_partial: Boolean(row.is_partial),
+          qr_payload: row.qr_payload as string,
+          print_job_id: (row.print_job_id as string) || null,
+          status: row.status as LabelStatus,
+          created_at: row.created_at as string,
           batch_code: batchCode,
           production_date: prodDate,
-          product_name: prod?.name || 'Moulded Part',
-          item_code: prod?.item_code,
-          product_id: prod?.id || plan?.product_id,
+          product_name: (prod?.name as string) || 'Moulded Part',
+          item_code: prod?.item_code as string | undefined,
+          product_id: (prod?.id as string) || (plan?.product_id as string),
         };
       });
 
       if (dateFilter === 'window') {
         items = items.filter((item) => isWithinPrintWindow(item.production_date));
+      } else if (dateFilter === 'today') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        items = items.filter((item) => item.production_date === todayStr);
       }
 
       setQueueLabels(items);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('Error fetching queue labels:', err);
-      setErrorMessage(err.message || 'Failed to fetch queue labels.');
+      setErrorMessage(msg || 'Failed to fetch queue labels.');
     } finally {
       setIsLoading(false);
     }
@@ -194,18 +220,31 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
   }, [papers, selectedPaperId]);
 
   const filteredLabels = useMemo(() => {
-    if (!activePaper) return queueLabels;
+    let list = queueLabels;
+    if (activePaper) {
+      list = list.filter((label) => {
+        const mapping = productPaperMappings.find((m) => m.product_id === label.product_id);
+        if (mapping) return mapping.label_paper_type_id === activePaper.id;
+        return true;
+      });
+    }
 
-    return queueLabels.filter((label) => {
-      const mapping = productPaperMappings.find((m) => m.product_id === label.product_id);
-      if (mapping) {
-        return mapping.label_paper_type_id === activePaper.id;
-      }
-      return true;
-    });
-  }, [queueLabels, activePaper, productPaperMappings]);
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      list = list.filter(
+        (l) =>
+          l.batch_code.toLowerCase().includes(q) ||
+          l.product_name.toLowerCase().includes(q) ||
+          l.item_code?.toLowerCase().includes(q) ||
+          l.qr_payload.toLowerCase().includes(q) ||
+          String(l.sequence_number).includes(q)
+      );
+    }
 
-  // Group by batch view mode
+    return list;
+  }, [queueLabels, activePaper, productPaperMappings, searchTerm]);
+
+  // Group by batch view mode - defaulted to COLLAPSED
   const [groupByBatch, setGroupByBatch] = useState<boolean>(true);
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
 
@@ -238,15 +277,29 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
       group.totalQuantity += label.expected_quantity || 0;
     });
 
+    // Ensure within each batch group, sequence numbers are ascending (Case #1, #2, #3...)
+    map.forEach((g) => {
+      g.labels.sort((a, b) => a.sequence_number - b.sequence_number);
+    });
+
     return Array.from(map.values());
   }, [filteredLabels]);
 
-  // Expand all batches by default when loaded
+  // Reset page to 0 when filters change
   useEffect(() => {
-    if (batchGroups.length > 0) {
-      setExpandedBatches(new Set(batchGroups.map((g) => g.batch_code)));
-    }
-  }, [batchGroups.length]);
+    setPage(0);
+  }, [selectedPaperId, statusFilter, dateFilter, searchTerm, groupByBatch]);
+
+  // Paginated slices
+  const paginatedBatchGroups = useMemo(() => {
+    const start = page * rowsPerPage;
+    return batchGroups.slice(start, start + rowsPerPage);
+  }, [batchGroups, page, rowsPerPage]);
+
+  const paginatedLabels = useMemo(() => {
+    const start = page * rowsPerPage;
+    return filteredLabels.slice(start, start + rowsPerPage);
+  }, [filteredLabels, page, rowsPerPage]);
 
   const toggleBatchExpand = (batchCode: string) => {
     setExpandedBatches((prev) => {
@@ -349,7 +402,7 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
   };
 
   const getSelectedPrintItems = (): PrintableLabelItem[] => {
-    return filteredLabels
+    const selected = filteredLabels
       .filter((l) => selectedLabelIds.has(l.id))
       .map((l) => ({
         id: l.id,
@@ -361,6 +414,23 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
         isPartial: l.is_partial,
         qrPayload: l.qr_payload,
       }));
+
+    // Group by product name -> batch code -> ascending case sequence number (Case #1, #2, #3...)
+    selected.sort((a, b) => {
+      const prodA = (a.productName || '').trim().toLowerCase();
+      const prodB = (b.productName || '').trim().toLowerCase();
+      if (prodA !== prodB) return prodA.localeCompare(prodB);
+
+      const batchA = (a.batchCode || '').trim().toLowerCase();
+      const batchB = (b.batchCode || '').trim().toLowerCase();
+      if (batchA !== batchB) return batchA.localeCompare(batchB);
+
+      const seqA = Number(a.sequenceNumber) || 0;
+      const seqB = Number(b.sequenceNumber) || 0;
+      return seqA - seqB;
+    });
+
+    return selected;
   };
 
   const executePrint = async (action: 'browser' | 'download', isReprint = false) => {
@@ -396,7 +466,8 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
         if (!rpcErr) {
           rpcHandled = true;
         }
-      } catch (_) {
+      } catch (rpcErr) {
+        console.debug('execute_queue_print_job RPC skipped:', rpcErr);
         rpcHandled = false;
       }
 
@@ -437,7 +508,9 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
               reprint_reason: isReprint ? reprintReason.trim() || 'Label reprint' : null,
               printed_by: currentUserName,
             }]);
-          } catch (_) {}
+          } catch (insErr) {
+            console.debug('label_print_jobs insert skipped:', insErr);
+          }
 
           // Try logging to system_changes audit trail
           try {
@@ -458,7 +531,9 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
                 paper: activePaper.name,
               }),
             }]);
-          } catch (_) {}
+          } catch (auditErr) {
+            console.debug('system_changes insert skipped:', auditErr);
+          }
         }
       }
 
@@ -482,9 +557,10 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
       setRepprintReason('');
 
       await fetchQueueLabels();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('Print queue error:', err);
-      setErrorMessage(err.message || 'Failed to execute print job.');
+      setErrorMessage(msg || 'Failed to execute print job.');
     } finally {
       setIsPrinting(false);
     }
@@ -515,15 +591,18 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
           reason: `Removed ${labelIds.length} label(s) from print queue`,
           new_value: JSON.stringify({ removed_ids: labelIds, count: labelIds.length }),
         }]);
-      } catch (_) {}
+      } catch (auditErr) {
+        console.debug('system_changes insert skipped:', auditErr);
+      }
 
       setSuccessMessage(`Removed ${labelIds.length} label(s) from the queue successfully.`);
       setSelectedLabelIds(new Set());
       setRemoveDialog(false);
       await fetchQueueLabels();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('Remove from queue error:', err);
-      setErrorMessage(err.message || 'Failed to remove labels from queue.');
+      setErrorMessage(msg || 'Failed to remove labels from queue.');
       setRemoveDialog(false);
     } finally {
       setIsRemoving(false);
@@ -601,6 +680,14 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
                         color={countForPaper > 0 ? 'primary' : 'default'}
                         sx={{ height: 20, fontSize: '0.65rem', fontWeight: countForPaper > 0 ? 700 : 400 }}
                       />
+                      {p.show_borders === false && (
+                        <Chip
+                          size="small"
+                          label="No Border"
+                          variant="outlined"
+                          sx={{ height: 18, fontSize: '0.6rem', color: '#f59e0b', borderColor: '#f59e0b', fontWeight: 600 }}
+                        />
+                      )}
                     </Box>
                   }
                 />
@@ -614,16 +701,30 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
             {/* Live Sheet Counter */}
             <Grid size={{ xs: 12, md: 6 }}>
               <Box sx={{ p: 2, bgcolor: 'var(--bg3, #1c2028)', borderRadius: 2, border: '1px solid var(--border, #2e3340)' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text2, #8a92a8)', letterSpacing: '0.05em' }}>
                     CAPACITY & SHEET PACKING EFFICIENCY
                   </Typography>
-                  <Chip
-                    size="small"
-                    color={selectedCount > 0 ? 'primary' : 'default'}
-                    label={`${selectedCount} Selected (${totalSheetsNeeded} Sheets)`}
-                    sx={{ fontWeight: 700 }}
-                  />
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Chip
+                      size="small"
+                      label={activePaper?.show_borders !== false ? 'Borders: ON' : 'Borders: OFF'}
+                      variant="outlined"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.65rem',
+                        fontWeight: 600,
+                        color: activePaper?.show_borders !== false ? '#10b981' : '#f59e0b',
+                        borderColor: activePaper?.show_borders !== false ? '#10b981' : '#f59e0b',
+                      }}
+                    />
+                    <Chip
+                      size="small"
+                      color={selectedCount > 0 ? 'primary' : 'default'}
+                      label={`${selectedCount} Selected (${totalSheetsNeeded} Sheets)`}
+                      sx={{ fontWeight: 700 }}
+                    />
+                  </Box>
                 </Box>
                 <Typography variant="body2" sx={{ fontWeight: 600, color: 'var(--text, #e2e6f0)' }}>
                   {sheetFillStatus}
@@ -801,25 +902,52 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
               </Typography>
             </Box>
 
+            {/* Search Filter */}
+            <TextField
+              size="small"
+              placeholder="Search batch, product, case..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: 'var(--text2, #8a92a8)', fontSize: 18 }} />
+                  </InputAdornment>
+                ),
+                endAdornment: searchTerm ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setSearchTerm('')} sx={{ p: 0.25, color: 'var(--text2, #8a92a8)' }}>
+                      <ClearIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              }}
+              sx={{ minWidth: 220, bgcolor: 'var(--bg2, #141720)' }}
+            />
+
+            {/* Status Filter */}
             <TextField
               select
               size="small"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) => setStatusFilter(e.target.value as 'unprinted' | 'all' | 'printed')}
               sx={{ minWidth: 160 }}
             >
               <MenuItem value="unprinted">Queue (Unprinted)</MenuItem>
               <MenuItem value="all">All / Reprints</MenuItem>
+              <MenuItem value="printed">Printed Only</MenuItem>
             </TextField>
 
+            {/* Date Filter */}
             <TextField
               select
               size="small"
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value as any)}
+              onChange={(e) => setDateFilter(e.target.value as 'all' | 'window' | 'today')}
               sx={{ minWidth: 140 }}
             >
               <MenuItem value="all">All Dates</MenuItem>
+              <MenuItem value="today">Today Only</MenuItem>
               <MenuItem value="window">3-Day Window</MenuItem>
             </TextField>
 
@@ -978,7 +1106,7 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
             </TableHead>
             <TableBody>
               {groupByBatch ? (
-                batchGroups.map((group) => {
+                paginatedBatchGroups.map((group) => {
                   const isExpanded = expandedBatches.has(group.batch_code);
                   const selectedInGroup = group.labels.filter((l) => selectedLabelIds.has(l.id)).length;
                   const isAllGroupSelected = group.labels.length > 0 && selectedInGroup === group.labels.length;
@@ -1131,7 +1259,7 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
                   );
                 })
               ) : (
-                filteredLabels.map((l) => {
+                paginatedLabels.map((l) => {
                   const isSelected = selectedLabelIds.has(l.id);
                   return (
                     <TableRow
@@ -1190,6 +1318,28 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
               )}
             </TableBody>
           </Table>
+        )}
+
+        {/* Table Pagination */}
+        {filteredLabels.length > 0 && (
+          <TablePagination
+            component="div"
+            count={groupByBatch ? batchGroups.length : filteredLabels.length}
+            page={page}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
+            }}
+            rowsPerPageOptions={groupByBatch ? [5, 10, 20, 50] : [10, 25, 50, 100]}
+            labelRowsPerPage={groupByBatch ? 'Batches per page:' : 'Labels per page:'}
+            sx={{
+              color: 'var(--text2, #8a92a8)',
+              borderTop: '1px solid var(--border, #2e3340)',
+              bgcolor: 'var(--bg3, #1c2028)',
+            }}
+          />
         )}
       </Card>
 
