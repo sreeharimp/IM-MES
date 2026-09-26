@@ -102,8 +102,8 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
 }) => {
   const [paperTypes, setPaperTypes] = useState<LabelPaperType[]>(DEFAULT_PAPER_TYPES);
   const [selectedPaperId, setSelectedPaperId] = useState<string>('avery-24');
-  const [seqStart, setSeqStart] = useState<number>(1);
-  const [seqEnd, setSeqEnd] = useState<number>(plan?.crates_planned || 1);
+  const [seqStart, setSeqStart] = useState<number | ''>(1);
+  const [seqEnd, setSeqEnd] = useState<number | ''>(plan?.crates_planned || 1);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCalibrationOpen, setIsCalibrationOpen] = useState<boolean>(false);
@@ -143,9 +143,12 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
   );
 
   const targetLabels = useMemo(() => {
+    const sStart = typeof seqStart === 'number' ? seqStart : 1;
+    const sEnd = typeof seqEnd === 'number' ? seqEnd : (plan?.crates_planned || 1);
+
     if (labels && labels.length > 0) {
       return labels
-        .filter((l) => l.sequence_number >= seqStart && l.sequence_number <= seqEnd)
+        .filter((l) => l.sequence_number >= sStart && l.sequence_number <= sEnd)
         .sort((a, b) => a.sequence_number - b.sequence_number);
     }
 
@@ -154,7 +157,7 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
     const stdPack = plan?.standard_packing_qty || 1000;
     const rem = plan?.remainder_quantity || 0;
 
-    for (let i = seqStart; i <= Math.min(seqEnd, total); i++) {
+    for (let i = sStart; i <= Math.min(sEnd, total); i++) {
       const isPartial = i === total && rem > 0;
       synthetic.push({
         id: `synth-${plan?.id || 'plan'}-${i}`,
@@ -400,7 +403,19 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
                   fullWidth
                   size="small"
                   value={seqStart}
-                  onChange={(e) => setSeqStart(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '') {
+                      setSeqStart('');
+                    } else {
+                      setSeqStart(Math.max(1, parseInt(val, 10) || 1));
+                    }
+                  }}
+                  onBlur={() => {
+                    if (seqStart === '' || seqStart < 1) {
+                      setSeqStart(1);
+                    }
+                  }}
                 />
               </Grid>
               <Grid size={{ xs: 6 }}>
@@ -410,9 +425,23 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
                   fullWidth
                   size="small"
                   value={seqEnd}
-                  onChange={(e) =>
-                    setSeqEnd(Math.min(plan?.crates_planned || 999, Math.max(seqStart, parseInt(e.target.value) || seqStart)))
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '') {
+                      setSeqEnd('');
+                    } else {
+                      setSeqEnd(Math.max(1, parseInt(val, 10) || 1));
+                    }
+                  }}
+                  onBlur={() => {
+                    const start = typeof seqStart === 'number' ? seqStart : 1;
+                    const maxCrates = plan?.crates_planned || 999;
+                    if (seqEnd === '' || seqEnd < start) {
+                      setSeqEnd(start);
+                    } else if (seqEnd > maxCrates) {
+                      setSeqEnd(maxCrates);
+                    }
+                  }}
                 />
               </Grid>
 

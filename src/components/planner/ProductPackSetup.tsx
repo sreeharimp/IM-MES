@@ -165,13 +165,22 @@ export const ProductPackSetup: React.FC<ProductPackSetupProps> = ({
                       size="small"
                       fullWidth
                       disabled={!canEdit}
-                      value={currentPack}
-                      onChange={(e) =>
+                      value={packSizes[p.id] !== undefined ? packSizes[p.id] : currentPack}
+                      onChange={(e) => {
+                        const val = e.target.value;
                         setPackSizes({
                           ...packSizes,
-                          [p.id]: Math.max(1, parseInt(e.target.value) || 1),
-                        })
-                      }
+                          [p.id]: val === '' ? ('' as any) : Math.max(0, parseInt(val, 10) || 0),
+                        });
+                      }}
+                      onBlur={() => {
+                        if (!packSizes[p.id] || Number(packSizes[p.id]) < 1) {
+                          setPackSizes({
+                            ...packSizes,
+                            [p.id]: currentPack || 1,
+                          });
+                        }
+                      }}
                       slotProps={{ htmlInput: { min: 1 } }}
                     />
                   </TableCell>

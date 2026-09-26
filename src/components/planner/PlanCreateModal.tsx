@@ -73,7 +73,7 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
   const [productId, setProductId] = useState<string>('');
   const [machineId, setMachineId] = useState<string>('IMM-A');
   const [shift, setShift] = useState<string>('A');
-  const [targetQuantity, setTargetQuantity] = useState<number>(5000);
+  const [targetQuantity, setTargetQuantity] = useState<number | ''>(5000);
   const [notes, setNotes] = useState<string>('');
   const [dayBreakdown, setDayBreakdown] = useState<DayBreakdownItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -123,12 +123,28 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
     return dates;
   };
 
+  const handleTargetQuantityChange = (val: string) => {
+    if (val === '') {
+      setTargetQuantity('');
+    } else {
+      const parsed = parseInt(val, 10);
+      setTargetQuantity(isNaN(parsed) ? '' : Math.max(0, parsed));
+    }
+  };
+
+  const handleTargetQuantityBlur = () => {
+    if (targetQuantity === '' || targetQuantity < 1) {
+      setTargetQuantity(1);
+    }
+  };
+
   const resetBreakdownToEvenSplit = () => {
+    const numericTargetQty = typeof targetQuantity === 'number' ? targetQuantity : (parseInt(String(targetQuantity), 10) || 0);
     if (mode === 'date_range') {
       const dates = getDateRangeArray(startDate, endDate);
       const dayCount = Math.max(1, dates.length);
-      const basePerDay = Math.floor(targetQuantity / dayCount);
-      const remOverall = targetQuantity % dayCount;
+      const basePerDay = Math.floor(numericTargetQty / dayCount);
+      const remOverall = numericTargetQty % dayCount;
 
       const items: DayBreakdownItem[] = dates.map((dStr, idx) => {
         const qty = basePerDay + (idx === dayCount - 1 ? remOverall : 0);
@@ -148,9 +164,9 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
         {
           dateStr: startDate,
           batchCode: bCode,
-          quantity: targetQuantity,
-          crates: Math.ceil(targetQuantity / stdPackQty) || 0,
-          remainder: targetQuantity % stdPackQty,
+          quantity: numericTargetQty,
+          crates: Math.ceil(numericTargetQty / stdPackQty) || 0,
+          remainder: numericTargetQty % stdPackQty,
         },
       ]);
     }
@@ -218,7 +234,8 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
   }, [dayBreakdown]);
 
   const handleSubmit = async () => {
-    if (!productId || targetQuantity <= 0) {
+    const finalQty = typeof targetQuantity === 'number' ? targetQuantity : (parseInt(String(targetQuantity), 10) || 0);
+    if (!productId || (mode !== 'date_range' && finalQty <= 0)) {
       setErrorMessage('Please select a product and enter a valid target quantity.');
       return;
     }
@@ -234,11 +251,11 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
     try {
       // 1. Insert parent plan
       const firstBatch = dayBreakdown[0];
-      const plannedQty = mode === 'date_range' ? totalBreakdownQty : targetQuantity;
-      const cratesPlanned = mode === 'date_range' ? totalBreakdownCrates : (Math.ceil(targetQuantity / stdPackQty) || 1);
+      const plannedQty = mode === 'date_range' ? totalBreakdownQty : finalQty;
+      const cratesPlanned = mode === 'date_range' ? totalBreakdownCrates : (Math.ceil(finalQty / stdPackQty) || 1);
       const remainderPlanned = mode === 'date_range' 
         ? (dayBreakdown[dayBreakdown.length - 1]?.remainder || 0) 
-        : (targetQuantity % stdPackQty);
+        : (finalQty % stdPackQty);
 
       const generatedBatch = firstBatch?.batchCode || generateBatchCode(pCode, new Date(startDate + 'T12:00:00'));
 
@@ -493,7 +510,8 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
                   fullWidth
                   size="small"
                   value={targetQuantity}
-                  onChange={(e) => setTargetQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                  onChange={(e) => handleTargetQuantityChange(e.target.value)}
+                  onBlur={handleTargetQuantityBlur}
                 />
               </Grid>
             </>
@@ -530,7 +548,8 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
                   fullWidth
                   size="small"
                   value={targetQuantity}
-                  onChange={(e) => setTargetQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                  onChange={(e) => handleTargetQuantityChange(e.target.value)}
+                  onBlur={handleTargetQuantityBlur}
                 />
               </Grid>
             </>
@@ -579,7 +598,8 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
                   fullWidth
                   size="small"
                   value={targetQuantity}
-                  onChange={(e) => setTargetQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                  onChange={(e) => handleTargetQuantityChange(e.target.value)}
+                  onBlur={handleTargetQuantityBlur}
                 />
               </Grid>
             </>
@@ -594,7 +614,8 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
                   fullWidth
                   size="small"
                   value={targetQuantity}
-                  onChange={(e) => setTargetQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                  onChange={(e) => handleTargetQuantityChange(e.target.value)}
+                  onBlur={handleTargetQuantityBlur}
                   helperText="Anchored to current production day"
                 />
               </Grid>
@@ -650,8 +671,12 @@ export const PlanCreateModal: React.FC<PlanCreateModalProps> = ({
                           <TextField
                             type="number"
                             size="small"
-                            value={item.quantity}
-                            onChange={(e) => handleDayQtyChange(idx, parseInt(e.target.value) || 0)}
+                            value={item.quantity === 0 ? '' : item.quantity}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleDayQtyChange(idx, val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0));
+                            }}
                             sx={{ '& .MuiInputBase-input': { py: 0.5, fontSize: '0.85rem' } }}
                           />
                         </TableCell>
