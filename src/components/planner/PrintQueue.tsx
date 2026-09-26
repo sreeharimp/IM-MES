@@ -935,7 +935,7 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
         ) : filteredLabels.length === 0 ? (
           <Box sx={{ p: 5, textAlign: 'center', maxWidth: 640, mx: 'auto' }}>
             <Box sx={{ display: 'inline-flex', p: 1.5, borderRadius: '50%', bgcolor: 'rgba(77, 159, 255, 0.1)', color: 'var(--blue, #4d9fff)', mb: 1.5 }}>
-              <PrintQueueIcon sx={{ fontSize: 32 }} />
+              <PrintIcon sx={{ fontSize: 32 }} />
             </Box>
             <Typography variant="h6" sx={{ color: 'var(--text, #e2e6f0)', fontWeight: 700, mb: 1 }}>
               No {statusFilter === 'unprinted' ? 'Pending Unprinted' : ''} Labels for {activePaper?.name}

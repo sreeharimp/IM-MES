@@ -19,7 +19,6 @@ import {
   Download as DownloadIcon,
   Tune as CalibrationIcon,
   WarningAmber as WarningIcon,
-  AutoAwesome as AutoIcon,
   ListAlt as QueueIcon,
 } from '@mui/icons-material';
 import type { ProductionPlan, ProductionPlanLabel, LabelPaperType } from '../../types';
@@ -180,7 +179,6 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
   );
 
   const isReprintNeeded = alreadyPrintedCount > 0;
-  const isAutoGenerating = labels.length === 0 && targetLabels.length > 0;
 
   const capacityPerSheet = selectedPaper ? selectedPaper.rows * selectedPaper.columns : 24;
   const sheetCount = Math.ceil(targetLabels.length / capacityPerSheet) || 1;
@@ -213,9 +211,13 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
       }
       onPrintCompleted();
       onClose();
-    } catch (err: any) {
+      if (onNavigateToQueue) {
+        onNavigateToQueue();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('Queue execution failed:', err);
-      setErrorMessage(err.message || 'Failed to queue labels.');
+      setErrorMessage(msg || 'Failed to queue labels.');
     } finally {
       setIsGenerating(false);
     }
@@ -254,7 +256,7 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
           .select('id');
         if (insErr) throw insErr;
         if (insertedData) {
-          insertedIds = insertedData.map((d: any) => d.id);
+          insertedIds = insertedData.map((d: { id: string }) => d.id);
         }
       }
 
@@ -286,7 +288,8 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
             p_reviewed_by: currentUserName || 'Supervisor',
           });
           if (!rpcErr) rpcHandled = true;
-        } catch (_) {
+        } catch (rpcErr) {
+          console.debug('execute_queue_print_job RPC skipped:', rpcErr);
           rpcHandled = false;
         }
       }
@@ -304,7 +307,9 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
             reprint_reason: isReprintNeeded ? 'Direct batch reprint' : null,
             printed_by: currentUserName,
           }]);
-        } catch (_) {}
+        } catch (insErr) {
+          console.debug('label_print_jobs insert skipped:', insErr);
+        }
 
         // Fallback: direct insert to system_changes audit trail
         try {
@@ -325,7 +330,9 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
               paper: selectedPaper.name,
             }),
           }]);
-        } catch (_) {}
+        } catch (auditErr) {
+          console.debug('system_changes insert skipped:', auditErr);
+        }
       }
 
       if (mode === 'preview') {
@@ -351,9 +358,10 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
 
       onPrintCompleted();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('Print execution failed:', err);
-      setErrorMessage(err.message || 'Failed to generate labels PDF.');
+      setErrorMessage(msg || 'Failed to generate labels PDF.');
     } finally {
       setIsGenerating(false);
     }

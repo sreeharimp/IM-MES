@@ -256,25 +256,26 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
 
       // 3. Batch / LOT Number
       doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(6.2);
+      doc.setFontSize(8.5);
       doc.setTextColor(0, 0, 0);
 
       if (tpl.showBatchCode) {
         if (tpl.isoSymbols.showLot) {
-          drawIsoSymbolOnPdf(doc, 'LOT', contentX, contentY, 5.5, 2.8, tpl.isoSymbols);
+          drawIsoSymbolOnPdf(doc, 'LOT', contentX, contentY - 0.3, 6.0, 3.2, tpl.isoSymbols);
           doc.setFont('Helvetica', 'bold');
+          doc.setFontSize(8.5);
           doc.setTextColor(0, 0, 0);
-          doc.text(` ${label.batchCode || 'LOT-2409'}`, contentX + 6.2, contentY + 2.1);
+          doc.text(` ${label.batchCode || 'LOT-2409'}`, contentX + 6.6, contentY + 2.4);
         } else {
-          doc.text(`${tpl.batchCodeLabel || 'LOT'}: ${label.batchCode || 'LOT-2409'}`, contentX, contentY + 2.1);
+          doc.text(`${tpl.batchCodeLabel || 'LOT'}: ${label.batchCode || 'LOT-2409'}`, contentX, contentY + 2.4);
         }
-        contentY += 3.6;
+        contentY += 4.0;
       }
 
       // 4. Case Number
       if (tpl.showCaseNumber) {
         doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(6.5);
+        doc.setFontSize(7.0);
         doc.setTextColor(0, 0, 0);
         doc.text(`${tpl.caseNumberPrefix || 'CASE NO: #'}${label.sequenceNumber || 1}`, contentX, contentY + 2.2);
         contentY += 3.6;

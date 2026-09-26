@@ -1181,12 +1181,12 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                     <g transform={`translate(${padLeft}, ${padTop + (template.showSubtitle ? 14.2 : 12.8)})`}>
                       {template.isoSymbols.showLot ? (
                         <>
-                          <rect x={0} y={-2.2} width={5.5} height={2.6} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
-                          <text x={2.75} y={-0.3} fontSize={1.7} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">LOT</text>
-                          <text x={6.5} y={-0.3} fontSize={2.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">LOT-2409</text>
+                          <rect x={0} y={-2.6} width={6.2} height={3.0} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
+                          <text x={3.1} y={-0.4} fontSize={2.0} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">LOT</text>
+                          <text x={7.4} y={-0.3} fontSize={3.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">LOT-2409</text>
                         </>
                       ) : (
-                        <text x={0} y={-0.3} fontSize={2.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
+                        <text x={0} y={-0.3} fontSize={3.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">
                           {template.batchCodeLabel || 'LOT'}: LOT-2409
                         </text>
                       )}
@@ -1198,7 +1198,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                     <text
                       x={padLeft}
                       y={padTop + (template.showSubtitle ? 17.2 : 15.8)}
-                      fontSize={2.3}
+                      fontSize={2.5}
                       fontWeight="bold"
                       fill="#000000"
                       fontFamily="Helvetica, Arial, sans-serif"
