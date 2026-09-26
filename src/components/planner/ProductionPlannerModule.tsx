@@ -14,12 +14,14 @@ import {
   History as HistoryIcon,
   Inventory2 as InventoryIcon,
   Print as PrintQueueIcon,
+  Style as LabelTemplateIcon,
 } from '@mui/icons-material';
 import type { Product, Machine } from '../../types';
 import { getCurrentProductionDayStr } from './services/dateWindow';
 import { PlanList } from './PlanList';
 import { PrintQueue } from './PrintQueue';
 import { PaperManagement } from './PaperManagement';
+import { LabelTemplateEditor } from './LabelTemplateEditor';
 import { ProductPackSetup } from './ProductPackSetup';
 import { AuditTrailView } from './AuditTrailView';
 
@@ -280,6 +282,7 @@ export const ProductionPlannerModule: React.FC<ProductionPlannerModuleProps> = (
             <Tab icon={<DescriptionIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Production Plans" />
             <Tab icon={<PrintQueueIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Print Queue" />
             <Tab icon={<InventoryIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Paper Management" />
+            <Tab icon={<LabelTemplateIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Label Templates" />
             <Tab icon={<SettingsIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Product Packaging Setup" />
             <Tab icon={<HistoryIcon sx={{ fontSize: 18 }} />} iconPosition="start" label="Print & Audit Trails" />
           </Tabs>
@@ -304,13 +307,19 @@ export const ProductionPlannerModule: React.FC<ProductionPlannerModuleProps> = (
             />
           )}
           {activeSubTab === 3 && (
+            <LabelTemplateEditor
+              currentUserRole={currentUser.role}
+              currentUserName={currentUser.name}
+            />
+          )}
+          {activeSubTab === 4 && (
             <ProductPackSetup
               products={products}
               currentUserRole={currentUser.role}
               onRefreshProducts={onRefreshProducts}
             />
           )}
-          {activeSubTab === 4 && <AuditTrailView />}
+          {activeSubTab === 5 && <AuditTrailView />}
         </Box>
       </Box>
     </ThemeProvider>

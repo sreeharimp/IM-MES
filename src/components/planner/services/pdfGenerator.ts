@@ -1,6 +1,11 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import type { LabelPaperType, ProductionPlan, ProductionPlanLabel } from '../../../types';
+import {
+  DEFAULT_LABEL_TEMPLATE,
+  drawIsoSymbolOnPdf,
+  type LabelTemplateConfig,
+} from './isoSymbols';
 
 export interface PrintableLabelItem {
   id: string;
@@ -18,6 +23,7 @@ export interface QueueRenderOptions {
   paper: LabelPaperType;
   startRow?: number; // 1-indexed (e.g. 1..rows)
   startCol?: number; // 1-indexed (e.g. 1..cols)
+  template?: LabelTemplateConfig;
 }
 
 export interface RenderLabelOptions {
@@ -27,6 +33,7 @@ export interface RenderLabelOptions {
   productName: string;
   startRow?: number;
   startCol?: number;
+  template?: LabelTemplateConfig;
 }
 
 /**
@@ -102,6 +109,16 @@ export function getSlotOffset(
  */
 export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsPDF> {
   const { labels, paper, startRow = 1, startCol = 1 } = options;
+
+  let tpl: LabelTemplateConfig = options.template || DEFAULT_LABEL_TEMPLATE;
+  if (!options.template && paper?.id) {
+    try {
+      const saved =
+        localStorage.getItem(`label_template_${paper.id}`) ||
+        localStorage.getItem('label_template_global');
+      if (saved) tpl = JSON.parse(saved);
+    } catch (_) {}
+  }
 
   const pW = Number(paper.page_width_mm) || 210;
   const pH = Number(paper.page_height_mm) || 297;
@@ -191,64 +208,142 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       const padBottom = Number(paper.padding_bottom_mm ?? paper.internal_padding_mm ?? 1.8);
 
       const contentX = x + padLeft;
-      const contentY = y + padTop;
+      let contentY = y + padTop;
       const contentW = Math.max(10, lW - (padLeft + padRight));
       const contentH = Math.max(10, lH - (padTop + padBottom));
 
       // 1. Header: Company Name
-      doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(Math.min(6.8, Math.max(5, contentW / 8)));
-      doc.setTextColor(30, 41, 59);
-      doc.text('AGNEY POLYSOFT INDIA PVT LTD', contentX, contentY + 2.5);
+      if (tpl.showCompanyName) {
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(Math.min(6.8, Math.max(5, contentW / 8)));
+        doc.setTextColor(30, 41, 59);
+        doc.text(tpl.companyName || 'AGNEY POLYSOFT INDIA PVT LTD', contentX, contentY + 2.5);
 
-      // Subtle horizontal divider
-      doc.setDrawColor(180, 185, 190);
-      doc.line(contentX, contentY + 3.6, contentX + contentW, contentY + 3.6);
+        // Subtle horizontal divider
+        doc.setDrawColor(180, 185, 190);
+        doc.line(contentX, contentY + 3.4, contentX + contentW, contentY + 3.4);
+        contentY += 4.2;
+      }
+
+      // Subtitle if enabled
+      if (tpl.showSubtitle && tpl.subtitleText) {
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(4.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(tpl.subtitleText, contentX, contentY + 1.8);
+        contentY += 3.0;
+      }
 
       // 2. Product Name
       doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(Math.min(7.5, Math.max(5.5, contentW / 7)));
+      const pSize =
+        tpl.productNameSize === 'large'
+          ? Math.min(8.5, contentW / 6.5)
+          : tpl.productNameSize === 'small'
+          ? Math.min(6.2, contentW / 8)
+          : Math.min(7.2, contentW / 7);
+      doc.setFontSize(pSize);
       doc.setTextColor(15, 23, 42);
       const pName = label.productName || 'Moulded Part';
-      const truncatedName = pName.length > 24 ? pName.substring(0, 22) + '..' : pName;
-      doc.text(truncatedName, contentX, contentY + 6.8);
+      const truncatedName = pName.length > 26 ? pName.substring(0, 24) + '..' : pName;
+      doc.text(truncatedName, contentX, contentY + 3.0);
+      contentY += 4.0;
 
-      // 3. Batch Code & Case No (Case No shows strictly: CASE NO: #X)
+      // 3. Batch / LOT Number
       doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(6.5);
+      doc.setFontSize(6.2);
       doc.setTextColor(51, 65, 85);
-      doc.text(`BATCH: ${label.batchCode}`, contentX, contentY + 10.2);
 
-      doc.setFont('Helvetica', 'bold');
-      doc.text(`CASE NO: #${label.sequenceNumber}`, contentX, contentY + 13.6);
-
-      // 4. Quantity (highlighted if partial)
-      doc.setFontSize(7.2);
-      if (label.isPartial) {
-        doc.setTextColor(185, 28, 28);
-        doc.text(`QTY: ${label.expectedQuantity} PCS (PARTIAL)`, contentX, contentY + 17.2);
-      } else {
-        doc.setTextColor(15, 23, 42);
-        doc.text(`QTY: ${label.expectedQuantity} PCS`, contentX, contentY + 17.2);
+      if (tpl.showBatchCode) {
+        if (tpl.isoSymbols.showLot) {
+          drawIsoSymbolOnPdf(doc, 'LOT', contentX, contentY, 5.5, 2.8, tpl.isoSymbols);
+          doc.setFont('Helvetica', 'bold');
+          doc.text(` ${label.batchCode}`, contentX + 6.2, contentY + 2.1);
+        } else {
+          doc.text(`${tpl.batchCodeLabel || 'LOT'}: ${label.batchCode}`, contentX, contentY + 2.1);
+        }
+        contentY += 3.6;
       }
 
-      // 5. QC Approval Area
-      doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(5.5);
-      doc.setTextColor(71, 85, 105);
-      const qcY = y + lH - padBottom - 1.5;
-      doc.setDrawColor(100, 116, 139);
-      doc.rect(contentX, Math.max(contentY + 18, qcY - 2.8), 2.8, 2.8);
-      doc.text('QC APPROVED', contentX + 3.6, Math.max(contentY + 18, qcY - 0.7));
-      doc.text('Sign: ____________', contentX, y + lH - padBottom);
+      // 4. Case Number
+      if (tpl.showCaseNumber) {
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(`${tpl.caseNumberPrefix || 'CASE NO: #'}${label.sequenceNumber}`, contentX, contentY + 2.2);
+        contentY += 3.6;
+      }
 
-      // 6. QR Code (QR payload format: batch_code-case_number)
-      const qrSize = Math.max(8, Math.min(16.5, contentH - 4.5, lW - 35));
-      const qrX = x + lW - padRight - qrSize;
-      const qrY = contentY + 4.5;
-      const qrDataUrl = qrMap.get(label.id);
-      if (qrDataUrl) {
-        doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+      // 5. Quantity (highlighted if partial)
+      if (tpl.showQuantity) {
+        doc.setFontSize(7.0);
+        if (label.isPartial) {
+          doc.setTextColor(185, 28, 28);
+          doc.text(`${tpl.quantityLabel || 'QTY:'} ${label.expectedQuantity} PCS (PARTIAL)`, contentX, contentY + 2.4);
+        } else {
+          doc.setTextColor(15, 23, 42);
+          doc.text(`${tpl.quantityLabel || 'QTY:'} ${label.expectedQuantity} PCS`, contentX, contentY + 2.4);
+        }
+      }
+
+      // 6. ISO 15223-1 Symbols Tray
+      let isoX = contentX;
+      const isoY = y + lH - padBottom - (tpl.showQcApproval ? 8.2 : 4.5);
+      const symH = 3.4;
+
+      if (tpl.isoSymbols.showMd) {
+        drawIsoSymbolOnPdf(doc, 'MD', isoX, isoY, 5.2, symH, tpl.isoSymbols);
+        isoX += 6.0;
+      }
+      if (tpl.isoSymbols.showSingleUse) {
+        drawIsoSymbolOnPdf(doc, 'SINGLE_USE', isoX, isoY, 3.6, symH, tpl.isoSymbols);
+        isoX += 4.5;
+      }
+      if (tpl.isoSymbols.showManufacturer) {
+        drawIsoSymbolOnPdf(doc, 'MANUFACTURER', isoX, isoY, 3.6, symH, tpl.isoSymbols);
+        isoX += 4.5;
+      }
+      if (tpl.isoSymbols.showExpiryDate) {
+        drawIsoSymbolOnPdf(doc, 'EXPIRY', isoX, isoY, 3.2, symH, tpl.isoSymbols);
+        isoX += 4.0;
+      }
+      if (tpl.isoSymbols.showKeepDry) {
+        drawIsoSymbolOnPdf(doc, 'KEEP_DRY', isoX, isoY, 3.4, symH, tpl.isoSymbols);
+        isoX += 4.2;
+      }
+      if (tpl.isoSymbols.showSterile) {
+        drawIsoSymbolOnPdf(doc, 'STERILE', isoX, isoY, 13.0, symH, tpl.isoSymbols);
+        isoX += 14.0;
+      }
+      if (tpl.isoSymbols.showCeMark) {
+        drawIsoSymbolOnPdf(doc, 'CE', isoX, isoY, 5.0, symH, tpl.isoSymbols);
+        isoX += 6.0;
+      }
+
+      // 7. QC Approval Area
+      if (tpl.showQcApproval) {
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(5.2);
+        doc.setTextColor(71, 85, 105);
+        const qcY = y + lH - padBottom - 1.5;
+        doc.setDrawColor(100, 116, 139);
+        doc.rect(contentX, Math.max(contentY + 12, qcY - 2.8), 2.8, 2.8);
+        doc.text(tpl.qcApprovalText || 'QC APPROVED', contentX + 3.6, Math.max(contentY + 12, qcY - 0.7));
+        doc.text('Sign: ____________', contentX, y + lH - padBottom);
+      }
+
+      // 8. QR Code (QR payload format: batch_code-case_number)
+      if (tpl.showQrCode) {
+        const qrSize = Math.max(8, Math.min(tpl.qrSizeMm || 14, contentH - 4.5, lW - 35));
+        const qrX = x + lW - padRight - qrSize;
+        const qrY =
+          tpl.qrCodePosition === 'bottom-right'
+            ? y + lH - padBottom - qrSize
+            : y + padTop + 4.5;
+        const qrDataUrl = qrMap.get(label.id);
+        if (qrDataUrl) {
+          doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+        }
       }
     }
   }
@@ -276,6 +371,7 @@ export async function buildLabelsPDFDoc(options: RenderLabelOptions): Promise<js
     paper,
     startRow,
     startCol,
+    template: options.template,
   });
 }
 
