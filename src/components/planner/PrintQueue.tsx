@@ -578,25 +578,34 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
             variant="scrollable"
             scrollButtons="auto"
           >
-            {papers.map((p) => (
-              <Tab
-                key={p.id}
-                value={p.id}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <SheetIcon sx={{ fontSize: 18 }} />
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {p.name}
-                    </Typography>
-                    <Chip
-                      size="small"
-                      label={`${p.rows * p.columns}-up`}
-                      sx={{ height: 20, fontSize: '0.65rem' }}
-                    />
-                  </Box>
-                }
-              />
-            ))}
+            {papers.map((p) => {
+              const countForPaper = queueLabels.filter((l) => {
+                const mapping = productPaperMappings.find((m) => m.product_id === l.product_id);
+                if (mapping) return mapping.label_paper_type_id === p.id;
+                return p.id === papers[0]?.id;
+              }).length;
+
+              return (
+                <Tab
+                  key={p.id}
+                  value={p.id}
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <SheetIcon sx={{ fontSize: 18 }} />
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {p.name}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={`${countForPaper} labels`}
+                        color={countForPaper > 0 ? 'primary' : 'default'}
+                        sx={{ height: 20, fontSize: '0.65rem', fontWeight: countForPaper > 0 ? 700 : 400 }}
+                      />
+                    </Box>
+                  }
+                />
+              );
+            })}
           </Tabs>
         </Box>
 
@@ -924,10 +933,28 @@ export const PrintQueue: React.FC<PrintQueueProps> = ({ currentUserName = 'Store
             <CircularProgress />
           </Box>
         ) : filteredLabels.length === 0 ? (
-          <Box sx={{ p: 6, textAlign: 'center' }}>
-            <Typography variant="body1" sx={{ color: 'var(--text2, #8a92a8)', fontWeight: 600 }}>
-              No labels found matching the current filters for {activePaper?.name}.
+          <Box sx={{ p: 5, textAlign: 'center', maxWidth: 640, mx: 'auto' }}>
+            <Box sx={{ display: 'inline-flex', p: 1.5, borderRadius: '50%', bgcolor: 'rgba(77, 159, 255, 0.1)', color: 'var(--blue, #4d9fff)', mb: 1.5 }}>
+              <PrintQueueIcon sx={{ fontSize: 32 }} />
+            </Box>
+            <Typography variant="h6" sx={{ color: 'var(--text, #e2e6f0)', fontWeight: 700, mb: 1 }}>
+              No {statusFilter === 'unprinted' ? 'Pending Unprinted' : ''} Labels for {activePaper?.name}
             </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text2, #8a92a8)', mb: 2.5, lineHeight: 1.6 }}>
+              {statusFilter === 'unprinted'
+                ? `If you or another operator already printed or previewed the batch from another device, its status is set to "Printed". Switch to "All / Reprints" below to view or reprint them.`
+                : `There are currently no labels mapped to this paper stock.`}
+            </Typography>
+            {statusFilter === 'unprinted' && (
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={() => setStatusFilter('all')}
+                sx={{ fontWeight: 600, px: 3, py: 1 }}
+              >
+                Switch to "All / Reprints" View
+              </Button>
+            )}
           </Box>
         ) : (
           <Table size="small">

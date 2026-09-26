@@ -91,9 +91,18 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
     }).then(setSampleQrUrl).catch(() => {});
   }, []);
 
-  // Load template for selected paper stock (from localStorage or default)
+  // Load template for selected paper stock (from database paper, localStorage or default)
   useEffect(() => {
     if (!selectedPaperId) return;
+
+    // 1. Check if paper has template_config in DB
+    const paper = papers.find((p) => p.id === selectedPaperId);
+    if (paper && paper.template_config && typeof paper.template_config === 'object') {
+      setTemplate(paper.template_config);
+      return;
+    }
+
+    // 2. Check localStorage for this paper
     try {
       const saved = localStorage.getItem(`label_template_${selectedPaperId}`);
       if (saved) {
@@ -108,7 +117,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
       }
     } catch (_) {}
     setTemplate(DEFAULT_LABEL_TEMPLATE);
-  }, [selectedPaperId]);
+  }, [selectedPaperId, papers]);
 
   const activePaper = useMemo(() => {
     return (
@@ -271,11 +280,33 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
   const handleSaveTemplate = async () => {
     setSaving(true);
     try {
-      // Save to localStorage keyed by paper format
+      // 1. Save to localStorage keyed by paper format for instant client-side cache
       if (selectedPaperId) {
         localStorage.setItem(`label_template_${selectedPaperId}`, JSON.stringify(template));
       }
       localStorage.setItem('label_template_global', JSON.stringify(template));
+
+      // 2. Persist directly to Supabase DB so all connected devices stay synced
+      if (selectedPaperId) {
+        const { error } = await supabase
+          .from('label_paper_types')
+          .update({ template_config: template })
+          .eq('id', selectedPaperId);
+
+        if (error) {
+          console.warn('Could not save template_config to DB:', error.message);
+          if (error.code === 'PGRST204' || error.message?.includes('column')) {
+            alert(
+              'Template saved in this browser! To sync across all other PCs and devices, run this SQL in Supabase SQL Editor:\n\nALTER TABLE label_paper_types ADD COLUMN IF NOT EXISTS template_config JSONB;'
+            );
+          }
+        } else {
+          // Update in-memory papers state so the current session reflects it immediately
+          setPapers((prev) =>
+            prev.map((p) => (p.id === selectedPaperId ? { ...p, template_config: template } : p))
+          );
+        }
+      }
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -1191,7 +1222,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                   )}
 
                   {/* ISO 15223-1 Symbols Row (Above footer or QC) */}
-                  <g transform={`translate(${padLeft}, ${lH - padBottom - (template.showQcApproval ? 5.2 : 4.5)})`}>
+                  <g transform={`translate(${padLeft}, ${lH - padBottom - (template.showQcApproval ? 7.6 : 4.5)})`}>
                     {/* Render active ISO symbol icons in a neat millimetric cluster */}
                     {(() => {
                       const icons: JSX.Element[] = [];
@@ -1289,7 +1320,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
 
                   {/* QC Status Line (Single Line: QC STATUS: APPROVED │ Inspected by :) */}
                   {template.showQcApproval && (
-                    <g transform={`translate(${padLeft}, ${lH - padBottom - 1.2})`}>
+                    <g transform={`translate(${padLeft}, ${lH - padBottom - 3.0})`}>
                       <text
                         x={0}
                         y={0}
@@ -1302,9 +1333,9 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       </text>
                       <line
                         x1={Math.max(26, safeW * 0.44)}
-                        y1={-2.0}
+                        y1={-2.2}
                         x2={Math.max(26, safeW * 0.44)}
-                        y2={0.3}
+                        y2={0.4}
                         stroke="#000000"
                         strokeWidth={0.2}
                       />

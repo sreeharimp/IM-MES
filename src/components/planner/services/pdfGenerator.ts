@@ -110,14 +110,18 @@ export function getSlotOffset(
 export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsPDF> {
   const { labels, paper, startRow = 1, startCol = 1 } = options;
 
-  let tpl: LabelTemplateConfig = options.template || DEFAULT_LABEL_TEMPLATE;
-  if (!options.template && paper?.id) {
-    try {
-      const saved =
-        localStorage.getItem(`label_template_${paper.id}`) ||
-        localStorage.getItem('label_template_global');
-      if (saved) tpl = JSON.parse(saved);
-    } catch (_) {}
+  let tpl: LabelTemplateConfig = options.template || (paper as any)?.template_config || DEFAULT_LABEL_TEMPLATE;
+  if (!options.template) {
+    if ((paper as any)?.template_config && typeof (paper as any).template_config === 'object') {
+      tpl = (paper as any).template_config;
+    } else if (paper?.id) {
+      try {
+        const saved =
+          localStorage.getItem(`label_template_${paper.id}`) ||
+          localStorage.getItem('label_template_global');
+        if (saved) tpl = JSON.parse(saved);
+      } catch (_) {}
+    }
   }
 
   const pW = Number(paper.page_width_mm) || 210;
@@ -291,7 +295,7 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
 
       // 6. ISO 15223-1 Symbols Tray
       let isoX = contentX;
-      const isoY = y + lH - padBottom - (tpl.showQcApproval ? 5.2 : 4.5);
+      const isoY = y + lH - padBottom - (tpl.showQcApproval ? 7.6 : 4.5);
       const symH = 3.4;
 
       if (tpl.isoSymbols.showMd) {
@@ -324,11 +328,12 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       }
 
       // 7. QC Status Line (Single Line: QC STATUS: APPROVED │ Inspected by :)
+      // Raised with safe 3.0mm bottom margin so it is never clipped by printer feed tolerances
       if (tpl.showQcApproval) {
         doc.setFont('Helvetica', 'bold');
         doc.setFontSize(5.0);
         doc.setTextColor(0, 0, 0);
-        const qcY = y + lH - padBottom - 0.8;
+        const qcY = y + lH - padBottom - 3.0;
         const statusText = `QC STATUS: ${tpl.qcApprovalText || 'APPROVED'}`;
         doc.text(statusText, contentX, qcY);
 
@@ -336,7 +341,7 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
         const sepX = contentX + Math.max(26, contentW * 0.44);
         doc.setDrawColor(0, 0, 0);
         doc.setLineWidth(0.2);
-        doc.line(sepX, qcY - 2.0, sepX, qcY + 0.3);
+        doc.line(sepX, qcY - 2.2, sepX, qcY + 0.4);
 
         doc.text('Inspected by : ', sepX + 2.5, qcY);
       }

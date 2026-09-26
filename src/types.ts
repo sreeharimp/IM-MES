@@ -353,6 +353,7 @@ export interface LabelPaperType {
   padding_left_mm?: number;
   padding_right_mm?: number;
   padding_bottom_mm?: number;
+  template_config?: any;
   created_by?: string;
   created_at: string;
 }

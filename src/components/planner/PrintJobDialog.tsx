@@ -189,12 +189,27 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
     setIsGenerating(true);
     setErrorMessage(null);
     try {
-      const labelIds = targetLabels.map((l) => l.id).filter((id) => !id.startsWith('synth-'));
-      if (labelIds.length > 0) {
+      const synthLabels = targetLabels.filter((l) => l.id.startsWith('synth-'));
+      const realLabelIds = targetLabels.map((l) => l.id).filter((id) => !id.startsWith('synth-'));
+
+      if (synthLabels.length > 0 && plan) {
+        const toInsert = synthLabels.map((l) => ({
+          plan_id: plan.id,
+          sequence_number: l.sequence_number,
+          expected_quantity: l.expected_quantity,
+          is_partial: l.is_partial,
+          qr_payload: l.qr_payload,
+          status: 'unprinted',
+        }));
+        const { error: insertErr } = await supabase.from('production_plan_labels').insert(toInsert);
+        if (insertErr) throw insertErr;
+      }
+
+      if (realLabelIds.length > 0) {
         await supabase
           .from('production_plan_labels')
           .update({ status: 'unprinted' })
-          .in('id', labelIds);
+          .in('id', realLabelIds);
       }
       onPrintCompleted();
       onClose();
@@ -221,14 +236,38 @@ export const PrintJobDialog: React.FC<PrintJobDialogProps> = ({
     setErrorMessage(null);
 
     try {
+      const synthLabels = targetLabels.filter((l) => l.id.startsWith('synth-'));
+      let insertedIds: string[] = [];
+
+      if (synthLabels.length > 0 && plan) {
+        const toInsert = synthLabels.map((l) => ({
+          plan_id: plan.id,
+          sequence_number: l.sequence_number,
+          expected_quantity: l.expected_quantity,
+          is_partial: l.is_partial,
+          qr_payload: l.qr_payload,
+          status: 'printed',
+        }));
+        const { data: insertedData, error: insErr } = await supabase
+          .from('production_plan_labels')
+          .insert(toInsert)
+          .select('id');
+        if (insErr) throw insErr;
+        if (insertedData) {
+          insertedIds = insertedData.map((d: any) => d.id);
+        }
+      }
+
       // Mark labels as printed
-      const labelIds = targetLabels.map((l) => l.id).filter((id) => !id.startsWith('synth-'));
-      if (labelIds.length > 0) {
+      const realLabelIds = targetLabels.map((l) => l.id).filter((id) => !id.startsWith('synth-'));
+      if (realLabelIds.length > 0) {
         await supabase
           .from('production_plan_labels')
           .update({ status: 'printed' })
-          .in('id', labelIds);
+          .in('id', realLabelIds);
       }
+
+      const labelIds = [...realLabelIds, ...insertedIds];
 
       let rpcHandled = false;
       const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
