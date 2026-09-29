@@ -1,4 +1,4 @@
-export type MachineStatus = 'Running' | 'Idle' | 'Maintenance' | 'Setup';
+﻿export type MachineStatus = 'Running' | 'Idle' | 'Maintenance' | 'Setup';
 
 export interface Machine {
   id: string;
@@ -105,13 +105,34 @@ export interface Crate {
 }
 
 // Grandchild
+export interface CrateSourceContribution {
+  crateId: string;
+  binNumber: number;
+  qty: number;
+}
+
 export interface Packet {
   id: string;
-  crateId: string;
-  inspectorId: string;
-  packedTime: string;
-  quantity: number; // e.g., 1000
-  qrCode: string; // Unique traceability code
+  batchId: string;
+  productId?: string;
+  productName?: string;
+  productCode?: string;
+  quantity: number;
+  crateSources?: CrateSourceContribution[];
+  packedBy?: string;
+  packedAt: string;
+  shiftId?: string;
+  status?: 'Packed' | 'Despatched';
+  qrCode?: string;
+  storageBinId?: string;
+  locationStatus?: 'WIP Storage' | 'In Transit' | 'Main Store' | 'Carton Packed';
+  storageBinBoundAt?: string;
+  storeReceivedAt?: string;
+  storeReceivedBy?: string;
+  cartonId?: string;
+  crateId?: string;
+  inspectorId?: string;
+  packedTime?: string;
 }
 
 export interface Operator {
@@ -160,6 +181,17 @@ export interface ShiftSetting {
   endTime: string;   // '14:00'
 }
 
+export type Tab = 'Live Dashboard' | 'Shop Floor' | 'Planning & Labels' | 'Inspections' | 'Final Inspection' | 'Batch Log' | 'Shift Log' | 'Breakdowns' | 'Machines' | 'About';
+
+export type RolePermissions = Record<string, string[]>;
+
+export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
+  Admin: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+  PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+  Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+  QC: ['Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'About'],
+};
+
 export interface AppSettings {
   id: string; // 'global'
   currentShift: string;
@@ -168,6 +200,7 @@ export interface AppSettings {
   outgoingSupervisorEmail?: string; // email of supervisor who triggered handover
   activeSupervisorName?: string;
   printLabels?: any; // JSONB for editable label system
+  role_permissions?: RolePermissions;
 }
 
 export interface ShiftSummary {

@@ -12,10 +12,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@capacitor-mlkit/barcode-scanning": "^8.1.0",
-    "@capacitor/android": "^8.3.2",
+    "@capacitor-mlkit/barcode-scanning": "^8.2.1",
+    "@capacitor/android": "^8.5.2",
     "@capacitor/cli": "^8.3.2",
-    "@capacitor/core": "^8.3.2",
+    "@capacitor/core": "^8.5.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.1",

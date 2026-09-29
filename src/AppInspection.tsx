@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import './index.css';
 import type { Machine, Crate, BatchRecord, Product, Operator, DefectType, AppSettings } from './types';
 import { supabase } from './lib/supabase';
-import { RefreshCw, LogOut, ClipboardList, ScanBarcode, Printer, Package, ListFilter, ArrowUpDown, ArrowRight, CheckCircle2, Calendar } from 'lucide-react';
+import { RefreshCw, LogOut, ClipboardList, ScanBarcode, Printer, Package, ListFilter, ArrowUpDown, ArrowRight, CheckCircle2, Calendar, ShieldAlert } from 'lucide-react';
+import { FinalInspectionPage } from './components/FinalInspectionPage';
 import { QRCodeSVG } from 'qrcode.react';
 
 // Components & Modals
@@ -32,7 +33,7 @@ const AppInspection: React.FC = () => {
   const [reprintCrate, setReprintCrate] = useState<Crate | null>(null);
 
   // Tab and filtering/sorting state
-  const [activeTab, setActiveTab] = useState<'overview' | 'inspections'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'inspections' | 'final-inspection'>('overview');
   const [filterProduct, setFilterProduct] = useState<string>('');
   const [filterDate, setFilterDate] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -124,7 +125,8 @@ const AppInspection: React.FC = () => {
           lastHandoverSummary: appData.last_handover_summary,
           outgoingSupervisorEmail: appData.last_handover_summary?.outgoing_supervisor_email,
           activeSupervisorName: appData.active_supervisor_name,
-          printLabels: appData.print_labels
+          printLabels: appData.print_labels,
+          role_permissions: appData.role_permissions
         });
 
         if (pData) setProfile({ fullName: pData.full_name, email: pData.email, role: pData.role || 'Inspector', employeeCode: pData.employee_code });
@@ -227,7 +229,8 @@ const AppInspection: React.FC = () => {
           lastHandoverSummary: a.last_handover_summary,
           outgoingSupervisorEmail: a.last_handover_summary?.outgoing_supervisor_email,
           activeSupervisorName: a.active_supervisor_name,
-          printLabels: a.print_labels
+          printLabels: a.print_labels,
+          role_permissions: a.role_permissions
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'operators' }, (p) => {
@@ -329,7 +332,7 @@ const AppInspection: React.FC = () => {
         if (likeMatch && likeMatch.length > 0) dbCrate = likeMatch[0];
       }
 
-      const error = null;  // errors handled per-query above
+      // errors handled per-query above
 
       if (!dbCrate) {
         alert(`Barcode Unit ID "${trimmed}" is not recognized in the system.`);
@@ -455,8 +458,63 @@ const AppInspection: React.FC = () => {
       });
   }, [pendingCrates, filterProduct, filterDate, sortOrder, getProductName]);
 
+    // Access Management: Separate permissions for Visual Inspection and Final Inspection
+  const { hasVisualInspection, hasFinalInspection } = React.useMemo(() => {
+    const role = profile?.role || 'QC';
+
+    // Admin and PowerUser always have access to both
+    if (role === 'Admin' || role === 'PowerUser') {
+      return { hasVisualInspection: true, hasFinalInspection: true };
+    }
+
+    // Check appSettings.role_permissions from Supabase or localStorage
+    const permissionsMap = appSettings?.role_permissions || (appSettings as any)?.printLabels?.role_permissions;
+    let rolePerms: string[] | null = null;
+    if (permissionsMap && permissionsMap[role]) {
+      rolePerms = permissionsMap[role];
+    } else {
+      try {
+        const cached = localStorage.getItem('mes_role_permissions');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed[role]) {
+            rolePerms = parsed[role];
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (rolePerms) {
+      const hasVisual = rolePerms.includes('Inspections') || rolePerms.includes('QC Inspections') || rolePerms.includes('QC Inspections (Visual)');
+      const hasFinal = rolePerms.includes('Final Inspection') || rolePerms.includes('FINAL_INSPECTION') || rolePerms.includes('Final QC Inspection');
+      return { hasVisualInspection: hasVisual, hasFinalInspection: hasFinal };
+    }
+
+    // Fallback defaults based on role naming
+    const norm = role.toLowerCase().trim();
+    if (norm === 'final_inspector' || norm === 'final inspector') {
+      return { hasVisualInspection: false, hasFinalInspection: true };
+    }
+    if (norm === 'qc' || norm === 'inspector' || norm === 'qc inspector' || norm === 'supervisor') {
+      return { hasVisualInspection: true, hasFinalInspection: true };
+    }
+
+    return { hasVisualInspection: false, hasFinalInspection: false };
+  }, [profile?.role, appSettings?.role_permissions, (appSettings as any)?.printLabels?.role_permissions]);
+
+  // Tab auto-selection based on access levels
+  useEffect(() => {
+    if (!hasVisualInspection && hasFinalInspection) {
+      setActiveTab('final-inspection');
+    } else if (hasVisualInspection && !hasFinalInspection && activeTab === 'final-inspection') {
+      setActiveTab('overview');
+    }
+  }, [hasVisualInspection, hasFinalInspection, activeTab]);
+
   if (!session) return <Login onSuccess={() => {}} />;
   if (!profile) return <div className="loading">Initializing Inspection Portal...</div>;
+
+
 
   const productSummaries = getProductSummaries();
   const filterOptions = getFilterProductOptions();
@@ -626,51 +684,90 @@ const AppInspection: React.FC = () => {
         </div>
       </header>
 
-      {/* Sub-Navigation Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg2)', padding: '0 20px', gap: '8px' }}>
-        <button 
-          onClick={() => setActiveTab('overview')}
-          style={{
-            padding: '14px 20px',
-            background: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'overview' ? '3px solid var(--md-primary)' : '3px solid transparent',
-            color: activeTab === 'overview' ? 'var(--md-primary)' : 'var(--text3)',
-            fontWeight: 700,
-            cursor: 'pointer',
-            fontSize: '13px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.6px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          Overview
-        </button>
-        <button 
-          onClick={() => setActiveTab('inspections')}
-          style={{
-            padding: '14px 20px',
-            background: 'transparent',
-            border: 'none',
-            borderBottom: activeTab === 'inspections' ? '3px solid var(--md-primary)' : '3px solid transparent',
-            color: activeTab === 'inspections' ? 'var(--md-primary)' : 'var(--text3)',
-            fontWeight: 700,
-            cursor: 'pointer',
-            fontSize: '13px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.6px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          Inspection List ({pendingCrates.length})
-        </button>
+      {/* Sub-Navigation: Just Two Simple Buttons */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg2)', padding: '8px 14px', gap: '10px' }}>
+        {hasVisualInspection && (
+          <button 
+            onClick={() => setActiveTab('overview')}
+            style={{
+              flex: 1,
+              padding: '12px 14px',
+              borderRadius: '10px',
+              background: activeTab === 'overview' || activeTab === 'inspections' ? 'var(--md-primary, #3b82f6)' : 'rgba(255,255,255,0.05)',
+              border: activeTab === 'overview' || activeTab === 'inspections' ? '1px solid rgba(59,130,246,0.5)' : '1px solid var(--border)',
+              color: activeTab === 'overview' || activeTab === 'inspections' ? '#ffffff' : 'var(--text2)',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: '14px',
+              letterSpacing: '0.3px',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            Visual Inspection
+          </button>
+        )}
+        {hasFinalInspection && (
+          <button 
+            onClick={() => setActiveTab('final-inspection')}
+            style={{
+              flex: 1,
+              padding: '12px 14px',
+              borderRadius: '10px',
+              background: activeTab === 'final-inspection' ? '#10b981' : 'rgba(255,255,255,0.05)',
+              border: activeTab === 'final-inspection' ? '1px solid rgba(16,185,129,0.5)' : '1px solid var(--border)',
+              color: activeTab === 'final-inspection' ? '#022c22' : 'var(--text2)',
+              fontWeight: 800,
+              cursor: 'pointer',
+              fontSize: '14px',
+              letterSpacing: '0.3px',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            Final Inspection
+          </button>
+        )}
       </div>
 
       {/* Main Content Pane */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', width: '100%', overflowY: 'auto' }}>
-        <div style={{ flex: 1, padding: '24px 20px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+        <div style={{ flex: 1, padding: activeTab === 'final-inspection' ? '0' : '24px 20px', maxWidth: activeTab === 'final-inspection' ? '100%' : '800px', margin: '0 auto', width: '100%' }}>
           
-          {activeTab === 'overview' ? (
+          {!hasVisualInspection && !hasFinalInspection ? (
+            <div className="card" style={{ padding: '48px 24px', textAlign: 'center', maxWidth: '480px', margin: '40px auto' }}>
+              <ShieldAlert size={48} color="var(--red)" style={{ margin: '0 auto 16px' }} />
+              <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '8px' }}>Access Restricted</h3>
+              <p style={{ color: 'var(--text3)', fontSize: '13px', lineHeight: 1.5, marginBottom: '20px' }}>
+                Your assigned role (<strong>{profile.role}</strong>) does not have access permissions for Visual Inspection or Final Inspection.
+              </p>
+              <div style={{ fontSize: '12px', color: 'var(--text2)' }}>
+                Please contact your Plant Administrator to update your Access Management settings in the Admin Console.
+              </div>
+              <button className="btn bsec bsm" style={{ marginTop: '24px' }} onClick={() => supabase.auth.signOut()}>
+                Sign Out
+              </button>
+            </div>
+          ) : activeTab === 'final-inspection' && hasFinalInspection ? (
+            <FinalInspectionPage
+              currentUser={{
+                id: session?.user?.id || '',
+                name: profile?.fullName || 'QC Inspector',
+                email: profile?.email || '',
+                role: profile?.role || 'QC'
+              }}
+              appSettings={appSettings}
+              onBackToVisualInspection={() => {
+                if (hasVisualInspection) setActiveTab('overview');
+              }}
+            />
+          ) : activeTab === 'overview' && hasVisualInspection ? (
             /* ========================================================
                TAB 1: OVERVIEW PAGE
                ======================================================== */
