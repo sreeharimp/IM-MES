@@ -92,10 +92,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const DEFAULT_USER_TYPES = ['Admin', 'PowerUser', 'Supervisor', 'QC', 'Planner', 'Stores', 'Operator'];
 
   const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-    Admin: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
-    PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
-    Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
-    QC: ['Inspections', 'Packing', 'Batch Log', 'Shift Log', 'About'],
+    Admin: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    QC: ['Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'About'],
     Planner: ['Planning & Labels', 'Batch Log', 'Shift Log', 'About'],
     Stores: ['Planning & Labels', 'Packing', 'About'],
     Operator: ['Shop Floor', 'About'],
@@ -1249,7 +1249,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       { id: 'Live Dashboard', label: 'Live Dashboard', desc: 'Real-time plant output, OEE & active machine status' },
                       { id: 'Shop Floor', label: 'Shop Floor', desc: 'Live unit output, ongoing job cards & machine controls' },
                       { id: 'Planning & Labels', label: 'Production Planning', desc: 'Batch planning, Avery labels & waste elimination queue' },
-                      { id: 'Inspections', label: 'QC Inspections', desc: 'First-Article inspection & defect categorization' },
+                      { id: 'Inspections', label: 'QC Inspections (Visual)', desc: 'First-Article inspection & defect categorization for crates' },
+                      { id: 'Final Inspection', label: 'Final QC Inspection', desc: 'High-speed continuous QR scanning of packed items & pre-printed labels' },
                       { id: 'Packing', label: 'Packing App', desc: 'Secondary packaging, box scanning & barcode labels' },
                       { id: 'Batch Log', label: 'Batch Logs', desc: 'Batch traceability, lot genealogy & bin breakdown' },
                       { id: 'Shift Log', label: 'Shift Logs', desc: 'Shift output logs & supervisor handover records' },

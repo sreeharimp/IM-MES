@@ -29,6 +29,7 @@ import PackingPage from './components/PackingPage';
 import LiveDashboardPage from './components/LiveDashboardPage';
 import { ProductionPlannerModule } from './components/planner/ProductionPlannerModule';
 import AboutPage from './components/AboutPage';
+import FinalInspectionHistoryPage from './components/FinalInspectionHistoryPage';
 
 function NavItem({ icon, label, active, onClick }: any) {
   return (
@@ -948,6 +949,10 @@ const App: React.FC = () => {
     if (role !== 'QC' && !basePermissions.includes('Production Planner')) {
       basePermissions.splice(2, 0, 'Production Planner');
     }
+    // Always ensure Final Inspection is available for Admin, PowerUser, Supervisor, and QC
+    if (['Admin', 'PowerUser', 'Supervisor', 'QC'].includes(role) && !basePermissions.includes('Final Inspection')) {
+      basePermissions.push('Final Inspection');
+    }
     return basePermissions;
   }, [profile?.role, appSettings?.role_permissions, appSettings?.printLabels]);
 
@@ -1545,8 +1550,50 @@ const App: React.FC = () => {
             />
           </div>
         );
-      case 'Inspections': return <InspectionPage pendingCrates={pendingCrates} machines={machines} products={products} batchRecords={batchRecords} operators={operators} onStartInspection={setInspectingBin} />;
-      case 'Batch Log': return <BatchLogPage batchRecords={batchRecords} products={products} pendingCrates={pendingCrates} operators={operators} />;
+      case 'Inspections': 
+        return (
+          <InspectionPage 
+            pendingCrates={pendingCrates} 
+            machines={machines} 
+            products={products} 
+            batchRecords={batchRecords} 
+            operators={operators} 
+            appSettings={appSettings}
+            currentUser={{
+              id: session?.user?.id || '',
+              name: profile?.fullName || 'QC Inspector',
+              email: profile?.email || '',
+              role: profile?.role || 'QC'
+            }}
+            onStartInspection={setInspectingBin} 
+          />
+        );
+      case 'Final Inspection':
+        return (
+          <FinalInspectionHistoryPage
+            batchRecords={batchRecords}
+            currentUser={{
+              id: session?.user?.id || '',
+              name: profile?.fullName || 'QC Inspector',
+              role: profile?.role || 'QC'
+            }}
+          />
+        );
+      case 'Batch Log': 
+        return (
+          <BatchLogPage 
+            batchRecords={batchRecords} 
+            products={products} 
+            pendingCrates={pendingCrates} 
+            operators={operators}
+            currentUser={{
+              id: session?.user?.id || '',
+              name: profile?.fullName || 'QC Inspector',
+              role: profile?.role || 'QC'
+            }}
+            onNavigateToFinalInspection={() => setActiveTab('Final Inspection')}
+          />
+        );
       case 'Packing': return <PackingPage machines={machines} products={products} batchRecords={batchRecords} operators={operators} appSettings={appSettings} supervisorName={profile?.fullName || ''} />;
       case 'Machines': 
         if (!userPermissions.includes('Machines') && profile?.role !== 'Admin' && profile?.role !== 'PowerUser') {
@@ -1768,6 +1815,9 @@ const App: React.FC = () => {
             {userPermissions.includes('Inspections') && (
               <NavItem icon={<ClipboardList size={16}/>} label="Inspections" active={activeTab==='Inspections'} onClick={()=>{setActiveTab('Inspections'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
+            {userPermissions.includes('Final Inspection') && (
+              <NavItem icon={<ShieldCheck size={16}/>} label="Final Inspection" active={activeTab==='Final Inspection'} onClick={()=>{setActiveTab('Final Inspection'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
+            )}
             {userPermissions.includes('Packing') && (
               <NavItem icon={<Boxes size={16}/>} label="Packing App" active={activeTab==='Packing'} onClick={()=>{setActiveTab('Packing'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
@@ -1868,6 +1918,12 @@ const App: React.FC = () => {
           <div className={`bn-item ${activeTab === 'Inspections' ? 'active' : ''}`} onClick={() => setActiveTab('Inspections')}>
             <ClipboardList size={20} />
             <span>Inspection</span>
+          </div>
+        )}
+        {userPermissions.includes('Final Inspection') && (
+          <div className={`bn-item ${activeTab === 'Final Inspection' ? 'active' : ''}`} onClick={() => setActiveTab('Final Inspection')}>
+            <ShieldCheck size={20} />
+            <span>Final QC</span>
           </div>
         )}
         {userPermissions.includes('Packing') && (
