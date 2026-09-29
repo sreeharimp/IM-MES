@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { 
-  ArrowRight, Package, Hash, Layers, CheckCircle2, Camera, X, Printer
+  ArrowRight, Package, Hash, Layers, CheckCircle2, Camera, X, Printer, QrCode, ShieldCheck
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { QRCodeSVG } from 'qrcode.react';
-import type { Machine, Product, Crate, BatchRecord, Operator } from '../types';
+import type { Machine, Product, Crate, BatchRecord, Operator, AppSettings } from '../types';
+import { printProductionSlip, formatDateDMY } from '../utils/printService';
+import { resolveSupervisorName } from '../utils/supervisorUtils';
+import { FinalInspectionPage } from './FinalInspectionPage';
+import { FinalInspectionService } from '../services/finalInspectionService';
 
 interface InspectionPageProps {
   pendingCrates: Crate[];
@@ -12,6 +16,14 @@ interface InspectionPageProps {
   products: Product[];
   batchRecords: BatchRecord[];
   operators: Operator[];
+  supervisors?: Array<{ id: string; full_name?: string; email?: string }>;
+  appSettings?: AppSettings | null;
+  currentUser?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
   onStartInspection: (crate: { id: string, netQty: number, machineId: string }) => void;
 }
 
@@ -21,8 +33,16 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   products,
   batchRecords,
   operators,
+  supervisors = [],
+  appSettings,
+  currentUser = { id: '', name: 'QC Inspector', email: '', role: 'QC' },
   onStartInspection 
 }) => {
+  const [operationMode, setOperationMode] = useState<'VISUAL_INSPECTION' | 'FINAL_INSPECTION'>('VISUAL_INSPECTION');
+  const canAccessFinalInspection = FinalInspectionService.isUserAuthorized(
+    currentUser.role,
+    appSettings?.role_permissions || (appSettings as any)?.printLabels?.role_permissions
+  );
   const [filterMachineId, setFilterMachineId] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [filterBatch, setFilterBatch] = useState('');
@@ -30,10 +50,35 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [reprintCrate, setReprintCrate] = useState<Crate | null>(null);
 
-  const handleReprint = (crate: Crate) => {
+  const handleReprint = async (crate: Crate) => {
     setReprintCrate(crate);
-    setTimeout(() => {
+    const resolvedSupervisor = resolveSupervisorName(crate.supervisorId, supervisors, appSettings?.activeSupervisorName);
+    const batch = batchRecords.find(b => b.id === crate.batchId);
+    const prod = products.find(p => p.id === batch?.productId || p.name === batch?.productName);
+    const productName = batch?.productName || prod?.name || 'N/A';
+    const operator = operators.find(o => o.id === crate.operatorId);
+    const machine = machines.find(m => m.id === crate.machineId) || { id: crate.machineId } as Machine;
+    const rmName = batch?.materialGrade || (crate as any).materialGrade || (crate as any).material_grade || 'N/A';
+    const rmBatch = crate.materialBatch || (crate as any).material_batch || batch?.materialBatch || 'N/A';
+
+    try {
+      await printProductionSlip(
+        crate,
+        machine,
+        operator?.name,
+        true,
+        productName,
+        resolvedSupervisor,
+        appSettings?.printLabels,
+        rmName,
+        rmBatch
+      );
+    } catch (e) {
+      console.warn('Reprint slip print error, fallback to browser print:', e);
       window.print();
+    }
+
+    setTimeout(() => {
       setReprintCrate(null);
     }, 500);
   };
@@ -69,8 +114,93 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
     return matchMachine && matchBatch && matchDate && matchProduct;
   });
 
+  if (operationMode === 'FINAL_INSPECTION' && canAccessFinalInspection) {
+    return (
+      <FinalInspectionPage
+        currentUser={currentUser}
+        appSettings={appSettings}
+        onBackToVisualInspection={() => setOperationMode('VISUAL_INSPECTION')}
+      />
+    );
+  }
+
   return (
     <div className="animate-fade-in">
+      {/* Operation Switcher Header (Visible to authorized roles) */}
+      {canAccessFinalInspection && (
+        <div 
+          className="card" 
+          style={{ 
+            marginBottom: '16px', 
+            padding: '12px 18px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            borderLeft: '4px solid var(--amber)'
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>QC Operations</span>
+              <span className="badge" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', fontSize: '10px' }}>
+                Role: {currentUser.role}
+              </span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+              Select inspection workflow stage: In-process crate verification or finished packet release
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', background: 'var(--bg2, #1e293b)', padding: '4px', borderRadius: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              style={{
+                background: operationMode === 'VISUAL_INSPECTION' ? 'var(--amber)' : 'transparent',
+                color: operationMode === 'VISUAL_INSPECTION' ? '#000' : 'var(--text2)',
+                fontWeight: 700,
+                fontSize: '12px',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onClick={() => setOperationMode('VISUAL_INSPECTION')}
+            >
+              <Package size={14} />
+              <span>1. Visual Inspection (Bins)</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              style={{
+                background: operationMode === 'FINAL_INSPECTION' ? 'var(--teal, #14b8a6)' : 'transparent',
+                color: operationMode === 'FINAL_INSPECTION' ? '#fff' : 'var(--text2)',
+                fontWeight: 700,
+                fontSize: '12px',
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onClick={() => setOperationMode('FINAL_INSPECTION')}
+            >
+              <QrCode size={14} />
+              <span>2. Final Inspection (Packets)</span>
+              <span style={{ 
+                fontSize: '9px', 
+                background: 'rgba(255,255,255,0.2)', 
+                padding: '2px 5px', 
+                borderRadius: '4px',
+                textTransform: 'uppercase'
+              }}>High-Speed</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Search & Filter Header */}
       <div className="card" style={{ marginBottom: '24px', padding: '20px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
@@ -332,11 +462,27 @@ const InspectionPage: React.FC<InspectionPageProps> = ({
                   <span>{reprintCrate.shiftId || 'N/A'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Product:</span>
+                  <span style={{ fontWeight: 600 }}>{batchRecords.find(b => b.id === reprintCrate.batchId)?.productName || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Raw Material:</span>
+                  <span>{batchRecords.find(b => b.id === reprintCrate.batchId)?.materialGrade || (reprintCrate as any).materialGrade || (reprintCrate as any).material_grade || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>RM Lot / Batch:</span>
+                  <span style={{ fontWeight: 600 }}>{reprintCrate.materialBatch || (reprintCrate as any).material_batch || batchRecords.find(b => b.id === reprintCrate.batchId)?.materialBatch || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                   <span>Operator:</span>
                   <span>
                     {operators.find(o => o.id === reprintCrate.operatorId)?.name || 'UNASSIGNED'} 
                     {operators.find(o => o.id === reprintCrate.operatorId)?.employeeId && ` (${operators.find(o => o.id === reprintCrate.operatorId)?.employeeId})`}
                   </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Supervisor:</span>
+                  <span style={{ fontWeight: 600 }}>{resolveSupervisorName(reprintCrate.supervisorId, supervisors, appSettings?.activeSupervisorName)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                   <span>Machine ID:</span>
