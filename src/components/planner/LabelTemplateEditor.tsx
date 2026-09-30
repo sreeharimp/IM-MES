@@ -58,7 +58,12 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
 
-  const canEdit = currentUserRole === 'Admin' || currentUserRole === 'PowerUser';
+  const canEdit =
+    currentUserRole === 'Admin' ||
+    currentUserRole === 'PowerUser' ||
+    currentUserRole === 'Supervisor' ||
+    currentUserRole === 'Planner' ||
+    !currentUserRole;
 
   // Load available paper types
   useEffect(() => {
@@ -95,14 +100,21 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
   useEffect(() => {
     if (!selectedPaperId) return;
 
-    // 1. Check if paper has template_config in DB
+    // 1. Check if selected paper has template_config in DB
     const paper = papers.find((p) => p.id === selectedPaperId);
     if (paper && paper.template_config && typeof paper.template_config === 'object') {
       setTemplate(paper.template_config);
       return;
     }
 
-    // 2. Check localStorage for this paper
+    // 2. Check if ANY active paper in DB has template_config (so newly logged-in devices get saved settings)
+    const anyPaper = papers.find((p) => p.template_config && typeof p.template_config === 'object');
+    if (anyPaper && anyPaper.template_config && typeof anyPaper.template_config === 'object') {
+      setTemplate(anyPaper.template_config);
+      return;
+    }
+
+    // 3. Check localStorage for this paper or global cache
     try {
       const saved = localStorage.getItem(`label_template_${selectedPaperId}`);
       if (saved) {
@@ -280,36 +292,36 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
   const handleSaveTemplate = async () => {
     setSaving(true);
     try {
-      // 1. Save to localStorage keyed by paper format for instant client-side cache
+      // 1. Save to localStorage for instant client-side cache
       if (selectedPaperId) {
         localStorage.setItem(`label_template_${selectedPaperId}`, JSON.stringify(template));
       }
       localStorage.setItem('label_template_global', JSON.stringify(template));
 
-      // 2. Persist directly to Supabase DB so all connected devices stay synced
+      // 2. Persist directly to Supabase DB across ALL active papers so all connected devices stay 100% synced!
       if (selectedPaperId) {
-        const { error } = await supabase
+        await supabase
           .from('label_paper_types')
           .update({ template_config: template })
           .eq('id', selectedPaperId);
-
-        if (error) {
-          console.warn('Could not save template_config to DB:', error.message);
-          if (error.code === 'PGRST204' || error.message?.includes('column')) {
-            alert(
-              'Template saved in this browser! To sync across all other PCs and devices, run this SQL in Supabase SQL Editor:\n\nALTER TABLE label_paper_types ADD COLUMN IF NOT EXISTS template_config JSONB;'
-            );
-          }
-        } else {
-          // Update in-memory papers state so the current session reflects it immediately
-          setPapers((prev) =>
-            prev.map((p) => (p.id === selectedPaperId ? { ...p, template_config: template } : p))
-          );
-        }
       }
 
+      const { error: batchErr } = await supabase
+        .from('label_paper_types')
+        .update({ template_config: template })
+        .eq('active', true);
+
+      if (batchErr) {
+        console.warn('Could not save template_config to DB:', batchErr.message);
+      }
+
+      // Update in-memory papers state so the current session reflects it immediately
+      setPapers((prev) =>
+        prev.map((p) => ({ ...p, template_config: template }))
+      );
+
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
       alert('Failed to save template: ' + err.message);
     } finally {
