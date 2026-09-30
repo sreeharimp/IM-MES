@@ -3,7 +3,7 @@ import {
   Search, Filter, Factory, AlertCircle, CheckCircle2,
   ChevronDown, ChevronRight, UserCheck, Package, Layers,
   ShieldCheck, ShieldAlert, AlertOctagon, QrCode, ChevronLeft,
-  Calendar, FlaskConical
+  Calendar, FlaskConical, Database, RefreshCw
 } from 'lucide-react';
 import type { BatchRecord, Product, Crate, Operator } from '../types';
 import { supabase } from '../lib/supabase';
@@ -26,6 +26,11 @@ const PAGE_SIZE = 15;
 const BatchLogPage: React.FC<BatchLogPageProps> = ({
   batchRecords, pendingCrates, operators, currentUser, onNavigateToFinalInspection
 }) => {
+  const [allBatches, setAllBatches] = useState<BatchRecord[]>(batchRecords);
+  const [totalDbBatches, setTotalDbBatches] = useState<number | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [historyLoaded, setHistoryLoaded] = useState<boolean>(false);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selProduct, setSelProduct] = useState('All');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Active' | 'Closed'>('All');
@@ -37,10 +42,71 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
   const [expandedTab, setExpandedTab] = useState<Record<string, 'visual' | 'final'>>({});
   const [batchCrates, setBatchCrates] = useState<Record<string, Crate[]>>({});
+  const [crateStats, setCrateStats] = useState<Record<string, { total: number; completed: number; pending: number }>>({});
   const [loadingBatch, setLoadingBatch] = useState<string | null>(null);
   const [finalInspectionSummaries, setFinalInspectionSummaries] = useState<Record<string, BatchFinalInspectionSummary>>({});
   const [loadingFinalInspections, setLoadingFinalInspections] = useState<boolean>(true);
   const [updatingPacketId, setUpdatingPacketId] = useState<string | null>(null);
+
+  // Sync with prop when not loaded full history yet
+  useEffect(() => {
+    if (!historyLoaded) {
+      setAllBatches(batchRecords);
+    }
+  }, [batchRecords, historyLoaded]);
+
+  // Fetch total batches count in database
+  useEffect(() => {
+    const fetchTotalCount = async () => {
+      try {
+        const { count, error } = await supabase.from('batch_records').select('*', { count: 'exact', head: true });
+        if (!error && typeof count === 'number') {
+          setTotalDbBatches(count);
+        }
+      } catch (e) {
+        console.warn('Could not fetch total batch count', e);
+      }
+    };
+    fetchTotalCount();
+  }, []);
+
+  const loadFullHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from('batch_records')
+        .select('*')
+        .order('start_time', { ascending: false });
+      if (!error && data) {
+        const mapped: BatchRecord[] = data.map((b: any) => ({
+          id: b.id,
+          machineId: b.machine_id,
+          productId: b.product_id,
+          productName: b.product_name,
+          productCode: b.product_code,
+          mouldId: b.mould_id,
+          materialId: b.material_id,
+          materialGrade: b.material_grade,
+          materialBatch: b.material_batch,
+          operatorId: b.operator_id,
+          startTime: b.start_time,
+          endTime: b.end_time,
+          crates: b.crates,
+          totalOutput: b.total_output || 0,
+          status: b.status,
+          batchDate: b.batch_date,
+        }));
+        setAllBatches(mapped);
+        setHistoryLoaded(true);
+      } else if (error) {
+        alert('Failed to load history: ' + error.message);
+      }
+    } catch (err: any) {
+      alert('Error loading batch history: ' + err?.message);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const handleStatusChange = async (
     packetId: string,
@@ -70,31 +136,39 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
     try {
       setLoadingFinalInspections(true);
       const summaries = await FinalInspectionService.getAllBatchInspectionSummaries(
-        batchRecords.map(b => ({ id: b.id, productName: b.productName }))
+        allBatches.map(b => ({ id: b.id, productName: b.productName }))
       );
       setFinalInspectionSummaries(summaries);
     } catch (err) {
       console.warn('Failed loading final inspection summaries:', err);
     } finally { setLoadingFinalInspections(false); }
-  }, [batchRecords]);
+  }, [allBatches]);
 
   useEffect(() => {
     loadFinalInspections();
-    const channel = supabase.channel('batch-log-final-inspections')
+    const fiChannel = supabase.channel('batch-log-final-inspections')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'system_changes' }, () => { loadFinalInspections(); })
       .subscribe();
-    return () => { channel.unsubscribe(); };
+    return () => {
+      fiChannel.unsubscribe();
+    };
   }, [loadFinalInspections]);
 
   const totalFinalInspectedPackets = useMemo(() => Object.values(finalInspectionSummaries).reduce((s, v) => s + v.totalPackets, 0), [finalInspectionSummaries]);
   const totalPassedPackets = useMemo(() => Object.values(finalInspectionSummaries).reduce((s, v) => s + v.passedCount, 0), [finalInspectionSummaries]);
   const totalRejectedPackets = useMemo(() => Object.values(finalInspectionSummaries).reduce((s, v) => s + v.rejectedCount, 0), [finalInspectionSummaries]);
   const totalHeldPackets = useMemo(() => Object.values(finalInspectionSummaries).reduce((s, v) => s + v.heldCount, 0), [finalInspectionSummaries]);
+  const totalPendingWipBins = useMemo(() => {
+    if (Object.keys(crateStats).length > 0) {
+      return Object.values(crateStats).reduce((sum, s) => sum + s.pending, 0);
+    }
+    return pendingCrates.length;
+  }, [crateStats, pendingCrates]);
 
-  const rmOptions = useMemo(() => { const s = new Set<string>(); batchRecords.forEach(b => { if (b.materialGrade) s.add(b.materialGrade); }); return Array.from(s).sort(); }, [batchRecords]);
-  const rmBatchOptions = useMemo(() => { const s = new Set<string>(); batchRecords.forEach(b => { if (filterRM === 'All' || b.materialGrade === filterRM) { if (b.materialBatch) s.add(b.materialBatch); } }); return Array.from(s).sort(); }, [batchRecords, filterRM]);
+  const rmOptions = useMemo(() => { const s = new Set<string>(); allBatches.forEach(b => { if (b.materialGrade) s.add(b.materialGrade); }); return Array.from(s).sort(); }, [allBatches]);
+  const rmBatchOptions = useMemo(() => { const s = new Set<string>(); allBatches.forEach(b => { if (filterRM === 'All' || b.materialGrade === filterRM) { if (b.materialBatch) s.add(b.materialBatch); } }); return Array.from(s).sort(); }, [allBatches, filterRM]);
 
-  const filtered = useMemo(() => batchRecords.filter(b => {
+  const filtered = useMemo(() => allBatches.filter(b => {
     if (filterStatus !== 'All' && b.status !== filterStatus) return false;
     if (selProduct !== 'All' && b.productName !== selProduct) return false;
     if (filterRM !== 'All' && b.materialGrade !== filterRM) return false;
@@ -110,12 +184,58 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
           !(b.materialBatch?.toLowerCase() || '').includes(q)) return false;
     }
     return true;
-  }), [batchRecords, filterStatus, selProduct, filterRM, filterRMBatch, filterDateFrom, filterDateTo, searchTerm]);
+  }), [allBatches, filterStatus, selProduct, filterRM, filterRMBatch, filterDateFrom, filterDateTo, searchTerm]);
 
   useEffect(() => { setCurrentPage(1); }, [filtered.length]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = useMemo(() => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE), [filtered, currentPage]);
+
+  const loadCrateStats = useCallback(async (targetIds?: string[]) => {
+    const ids = targetIds || paginated.map(b => b.id);
+    if (!ids.length) return;
+    try {
+      const { data, error } = await supabase
+        .from('crates')
+        .select('batch_id, status')
+        .in('batch_id', ids);
+
+      if (!error && data) {
+        setCrateStats(prev => {
+          const next = { ...prev };
+          for (const id of ids) {
+            if (!next[id]) {
+              next[id] = { total: 0, completed: 0, pending: 0 };
+            }
+          }
+          for (const row of data) {
+            if (!next[row.batch_id]) {
+              next[row.batch_id] = { total: 0, completed: 0, pending: 0 };
+            }
+            next[row.batch_id].total += 1;
+            if (row.status === 'Completed') {
+              next[row.batch_id].completed += 1;
+            } else {
+              next[row.batch_id].pending += 1;
+            }
+          }
+          return next;
+        });
+      }
+    } catch (err) {
+      console.warn('Failed loading crate stats:', err);
+    }
+  }, [paginated]);
+
+  useEffect(() => {
+    loadCrateStats();
+    const crateChannel = supabase.channel('batch-log-crates-watch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crates' }, () => { loadCrateStats(); })
+      .subscribe();
+    return () => {
+      crateChannel.unsubscribe();
+    };
+  }, [paginated, loadCrateStats]);
 
   const formatDate = (iso: string) => {
     if (!iso) return '—';
@@ -143,14 +263,33 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
           inspectedBy: c.inspected_by, inspectedAt: c.inspected_at, status: c.status
         } as any));
         setBatchCrates(prev => ({ ...prev, [batchId]: mapped }));
+        const comp = mapped.filter(c => c.status === 'Completed').length;
+        const pend = mapped.filter(c => c.status !== 'Completed').length;
+        setCrateStats(prev => ({ ...prev, [batchId]: { total: mapped.length, completed: comp, pending: pend } }));
       }
       setLoadingBatch(null);
     }
   };
 
-  // FIX: b.crates = total bins in DB. pendingCrates = bins not yet inspected.
-  // completed = total - pending (clamped to 0)
+  // Accurate bin stats directly from DB crate status counts
   const getBinStats = (b: BatchRecord) => {
+    // 1. If batch crates already expanded and loaded
+    if (batchCrates[b.id]) {
+      const crates = batchCrates[b.id];
+      const completed = crates.filter(c => c.status === 'Completed').length;
+      const pendingCount = crates.filter(c => c.status !== 'Completed').length;
+      const total = crates.length || b.crates || 0;
+      return { total, completed, pendingCount, hasPending: pendingCount > 0 };
+    }
+    // 2. If aggregate crate stats loaded from DB
+    if (crateStats[b.id]) {
+      const stat = crateStats[b.id];
+      const total = Math.max(stat.total, b.crates || 0);
+      const completed = stat.completed;
+      const pendingCount = stat.pending;
+      return { total, completed, pendingCount, hasPending: pendingCount > 0 };
+    }
+    // 3. Fallback before crate stats finish fetching
     const pendingCount = pendingCrates.filter(c => c.batchId === b.id).length;
     const total = b.crates || 0;
     const completed = Math.max(0, total - pendingCount);
@@ -175,8 +314,8 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
     <div className="animate-fade-in" style={{ padding: '0 4px' }}>
       {/* Metric Cards */}
       <div className="mg" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-        <div className="mc2"><div className="ml">Active Batches</div><div className="mv green">{batchRecords.filter(b => b.status === 'Active').length} <span className="ms">RUNNING</span></div></div>
-        <div className="mc2"><div className="ml">Pending WIP</div><div className="mv amber">{pendingCrates.length} <span className="ms">BINS</span></div></div>
+        <div className="mc2"><div className="ml">Active Batches</div><div className="mv green">{allBatches.filter(b => b.status === 'Active').length} <span className="ms">RUNNING</span></div></div>
+        <div className="mc2"><div className="ml">Pending WIP</div><div className="mv amber">{totalPendingWipBins} <span className="ms">BINS</span></div></div>
         <div className="mc2" onClick={onNavigateToFinalInspection} style={{ cursor: onNavigateToFinalInspection ? 'pointer' : 'default' }} title={onNavigateToFinalInspection ? 'Click to open Final Inspection Audit Page' : undefined}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="ml">Final Inspected</div>
@@ -185,11 +324,24 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
           <div className="mv blue" style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>{totalFinalInspectedPackets} <span className="ms">PACKETS</span></div>
           <div style={{ fontSize: '10px', marginTop: '3px', display: 'flex', gap: '8px', fontWeight: 600 }}>
             <span style={{ color: '#10b981' }}>{totalPassedPackets} Passed</span>
-            {totalRejectedPackets > 0 && <span style={{ color: '#ef4444' }}>� {totalRejectedPackets} Rej</span>}
-            {totalHeldPackets > 0 && <span style={{ color: '#f59e0b' }}>� {totalHeldPackets} Hold</span>}
+            {totalRejectedPackets > 0 && <span style={{ color: '#ef4444' }}> {totalRejectedPackets} Rej</span>}
+            {totalHeldPackets > 0 && <span style={{ color: '#f59e0b' }}> {totalHeldPackets} Hold</span>}
           </div>
         </div>
-        <div className="mc2"><div className="ml">Historical Audit</div><div className="mv">{batchRecords.length} <span className="ms">RECORDS</span></div></div>
+        <div className="mc2">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="ml">Historical Audit</div>
+            {!historyLoaded && (
+              <span onClick={loadFullHistory} style={{ fontSize: '10px', color: 'var(--purple)', fontWeight: 700, cursor: 'pointer' }}>
+                {loadingHistory ? 'Loading...' : 'Load All ?'}
+              </span>
+            )}
+          </div>
+          <div className="mv">{allBatches.length} <span className="ms">{historyLoaded ? 'FULL ARCHIVE' : (totalDbBatches ? `OF ${totalDbBatches} RECS` : 'RECORDS')}</span></div>
+          <div style={{ fontSize: '10px', marginTop: '3px', color: 'var(--text3)', fontWeight: 500 }}>
+            {historyLoaded ? 'Complete database history active' : (totalDbBatches ? `${totalDbBatches - allBatches.length} older records in DB` : 'Showing initial batch')}
+          </div>
+        </div>
       </div>
 
       <div className="card">
@@ -203,6 +355,33 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                   <button key={s} onClick={() => setFilterStatus(s)} style={{ padding: '4px 12px', border: 'none', background: filterStatus === s ? 'var(--bg)' : 'transparent', color: filterStatus === s ? 'var(--text)' : 'var(--text3)', fontSize: '11px', fontWeight: 600, borderRadius: '4px', cursor: 'pointer' }}>{s}</button>
                 ))}
               </div>
+              {!historyLoaded ? (
+                <button
+                  onClick={loadFullHistory}
+                  disabled={loadingHistory}
+                  className="btn bsm"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: 'rgba(168, 85, 247, 0.12)',
+                    color: 'var(--purple)',
+                    border: '1px solid rgba(168, 85, 247, 0.35)',
+                    fontWeight: 700,
+                    fontSize: '11px',
+                    padding: '4px 10px',
+                    borderRadius: 'var(--r)'
+                  }}
+                  title="Query all historical batches beyond initial 60 records"
+                >
+                  <Database size={12} />
+                  {loadingHistory ? 'Loading Archive...' : `Load Full History (${totalDbBatches ? `${totalDbBatches} Batches` : 'All'})`}
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--green)', fontWeight: 600, background: 'rgba(16, 185, 129, 0.1)', padding: '3px 8px', borderRadius: 'var(--r)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                  <CheckCircle2 size={12} /> Full History ({allBatches.length} Batches)
+                </div>
+              )}
             </div>
             <div style={{ position: 'relative' }}>
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
@@ -216,7 +395,7 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
               <Filter size={11} style={{ color: 'var(--text3)', marginRight: '6px' }} />
               <select className="fi" value={selProduct} onChange={e => setSelProduct(e.target.value)} style={{ border: 'none', background: 'transparent', width: '130px', height: '28px', padding: 0, fontSize: '11px', fontWeight: 600 }}>
                 <option value="All">All Products</option>
-                {Array.from(new Set(batchRecords.map((b: any) => b.productName || 'Unknown'))).sort().map(name => (<option key={name} value={name}>{name}</option>))}
+                {Array.from(new Set(allBatches.map((b: any) => b.productName || 'Unknown'))).sort().map(name => (<option key={name} value={name}>{name}</option>))}
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--r)', padding: '0 8px', height: '30px' }}>
@@ -503,7 +682,10 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
         {totalPages > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg2)' }}>
             <span style={{ fontSize: '11px', color: 'var(--text3)', fontWeight: 600 }}>
-              Showing {((currentPage - 1) * PAGE_SIZE) + 1}�{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} batches
+              Showing {((currentPage - 1) * PAGE_SIZE) + 1} to {Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} batches
+              {!historyLoaded && totalDbBatches && totalDbBatches > allBatches.length && (
+                <span> &middot; <button onClick={loadFullHistory} disabled={loadingHistory} style={{ background: 'none', border: 'none', color: 'var(--purple)', textDecoration: 'underline', cursor: 'pointer', fontSize: '11px', fontWeight: 700, padding: 0 }}>{loadingHistory ? 'Loading history...' : `Load all ${totalDbBatches} historical records`}</button></span>
+              )}
             </span>
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
               <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="btn bsm" style={{ padding: '4px 10px', opacity: currentPage === 1 ? 0.4 : 1 }}><ChevronLeft size={14} /></button>
