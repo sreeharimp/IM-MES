@@ -1,0 +1,17 @@
+// Top-level build file for IM-MES Native Android Shop Floor App
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.3'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'
+        classpath 'org.jetbrains.kotlin:kotlin-serialization:2.0.21'
+        classpath 'org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.0.21'
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
