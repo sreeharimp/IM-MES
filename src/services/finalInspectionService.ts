@@ -269,7 +269,7 @@ export class FinalInspectionService {
    */
   static isUserAuthorized(role?: string | null, customPermissions?: Record<string, string[]> | null): boolean {
     if (!role) return false;
-    if (role === 'Admin' || role === 'PowerUser') return true;
+    if (role === 'Admin') return true;
 
     // 1. Direct role_permissions passed from AppSettings / Admin
     if (customPermissions && customPermissions[role]) {
@@ -280,7 +280,7 @@ export class FinalInspectionService {
     // 2. Check localStorage cached role permissions from Admin Access Management
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const cached = localStorage.getItem('mes_role_permissions');
+        const cached = localStorage.getItem('mes_role_permissions') || localStorage.getItem('immc_role_permissions');
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && parsed[role]) {

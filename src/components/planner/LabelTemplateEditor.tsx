@@ -33,6 +33,7 @@ import type { LabelPaperType } from '../../types';
 import { supabase } from '../../lib/supabase';
 import {
   DEFAULT_LABEL_TEMPLATE,
+  normalizeLabelTemplate,
   type LabelTemplateConfig,
   type IsoSymbolsConfig,
 } from './services/isoSymbols';
@@ -103,14 +104,14 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
     // 1. Check if selected paper has template_config in DB
     const paper = papers.find((p) => p.id === selectedPaperId);
     if (paper && paper.template_config && typeof paper.template_config === 'object') {
-      setTemplate(paper.template_config);
+      setTemplate(normalizeLabelTemplate(paper.template_config));
       return;
     }
 
     // 2. Check if ANY active paper in DB has template_config (so newly logged-in devices get saved settings)
     const anyPaper = papers.find((p) => p.template_config && typeof p.template_config === 'object');
     if (anyPaper && anyPaper.template_config && typeof anyPaper.template_config === 'object') {
-      setTemplate(anyPaper.template_config);
+      setTemplate(normalizeLabelTemplate(anyPaper.template_config));
       return;
     }
 
@@ -118,13 +119,13 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
     try {
       const saved = localStorage.getItem(`label_template_${selectedPaperId}`);
       if (saved) {
-        setTemplate(JSON.parse(saved));
+        setTemplate(normalizeLabelTemplate(JSON.parse(saved)));
         return;
       }
       // Check global template
       const globalSaved = localStorage.getItem('label_template_global');
       if (globalSaved) {
-        setTemplate(JSON.parse(globalSaved));
+        setTemplate(normalizeLabelTemplate(JSON.parse(globalSaved)));
         return;
       }
     } catch (_) {}
@@ -164,11 +165,16 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
   const safeW = Math.max(10, lW - (padLeft + padRight));
   const safeH = Math.max(10, lH - (padTop + padBottom));
 
+  const safeIso = useMemo(
+    () => template?.isoSymbols || DEFAULT_LABEL_TEMPLATE.isoSymbols,
+    [template]
+  );
+
   const handleUpdateIsoSymbol = (key: keyof IsoSymbolsConfig, value: any) => {
     setTemplate((prev) => ({
       ...prev,
       isoSymbols: {
-        ...prev.isoSymbols,
+        ...(prev.isoSymbols || DEFAULT_LABEL_TEMPLATE.isoSymbols),
         [key]: value,
       },
     }));
@@ -781,51 +787,51 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                       <Chip
                         label="[MD] Medical Device"
-                        color={template.isoSymbols.showMd ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showMd', !template.isoSymbols.showMd)}
-                        variant={template.isoSymbols.showMd ? 'filled' : 'outlined'}
+                        color={safeIso.showMd ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showMd', !safeIso.showMd)}
+                        variant={safeIso.showMd ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="[LOT] Batch Code"
-                        color={template.isoSymbols.showLot ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showLot', !template.isoSymbols.showLot)}
-                        variant={template.isoSymbols.showLot ? 'filled' : 'outlined'}
+                        color={safeIso.showLot ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showLot', !safeIso.showLot)}
+                        variant={safeIso.showLot ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="[REF] Catalogue No"
-                        color={template.isoSymbols.showRef ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showRef', !template.isoSymbols.showRef)}
-                        variant={template.isoSymbols.showRef ? 'filled' : 'outlined'}
+                        color={safeIso.showRef ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showRef', !safeIso.showRef)}
+                        variant={safeIso.showRef ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="[SN] Serial Number"
-                        color={template.isoSymbols.showSn ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showSn', !template.isoSymbols.showSn)}
-                        variant={template.isoSymbols.showSn ? 'filled' : 'outlined'}
+                        color={safeIso.showSn ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showSn', !safeIso.showSn)}
+                        variant={safeIso.showSn ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="🏭 Manufacturer"
-                        color={template.isoSymbols.showManufacturer ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showManufacturer', !template.isoSymbols.showManufacturer)}
-                        variant={template.isoSymbols.showManufacturer ? 'filled' : 'outlined'}
+                        color={safeIso.showManufacturer ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showManufacturer', !safeIso.showManufacturer)}
+                        variant={safeIso.showManufacturer ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="📅 Mfg Date"
-                        color={template.isoSymbols.showMfgDate ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showMfgDate', !template.isoSymbols.showMfgDate)}
-                        variant={template.isoSymbols.showMfgDate ? 'filled' : 'outlined'}
+                        color={safeIso.showMfgDate ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showMfgDate', !safeIso.showMfgDate)}
+                        variant={safeIso.showMfgDate ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="⌛ Use-by / Expiry"
-                        color={template.isoSymbols.showExpiryDate ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showExpiryDate', !template.isoSymbols.showExpiryDate)}
-                        variant={template.isoSymbols.showExpiryDate ? 'filled' : 'outlined'}
+                        color={safeIso.showExpiryDate ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showExpiryDate', !safeIso.showExpiryDate)}
+                        variant={safeIso.showExpiryDate ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                     </Box>
@@ -840,63 +846,63 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                       <Chip
                         label="② Do Not Re-use (Single Use)"
-                        color={template.isoSymbols.showSingleUse ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showSingleUse', !template.isoSymbols.showSingleUse)}
-                        variant={template.isoSymbols.showSingleUse ? 'filled' : 'outlined'}
+                        color={safeIso.showSingleUse ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showSingleUse', !safeIso.showSingleUse)}
+                        variant={safeIso.showSingleUse ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="📖 Consult IFU"
-                        color={template.isoSymbols.showConsultIfu ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showConsultIfu', !template.isoSymbols.showConsultIfu)}
-                        variant={template.isoSymbols.showConsultIfu ? 'filled' : 'outlined'}
+                        color={safeIso.showConsultIfu ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showConsultIfu', !safeIso.showConsultIfu)}
+                        variant={safeIso.showConsultIfu ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="⚠ Caution"
-                        color={template.isoSymbols.showCaution ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showCaution', !template.isoSymbols.showCaution)}
-                        variant={template.isoSymbols.showCaution ? 'filled' : 'outlined'}
+                        color={safeIso.showCaution ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showCaution', !safeIso.showCaution)}
+                        variant={safeIso.showCaution ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="☂ Keep Dry"
-                        color={template.isoSymbols.showKeepDry ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showKeepDry', !template.isoSymbols.showKeepDry)}
-                        variant={template.isoSymbols.showKeepDry ? 'filled' : 'outlined'}
+                        color={safeIso.showKeepDry ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showKeepDry', !safeIso.showKeepDry)}
+                        variant={safeIso.showKeepDry ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="☀ Keep Away Sunlight"
-                        color={template.isoSymbols.showKeepAwaySunlight ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showKeepAwaySunlight', !template.isoSymbols.showKeepAwaySunlight)}
-                        variant={template.isoSymbols.showKeepAwaySunlight ? 'filled' : 'outlined'}
+                        color={safeIso.showKeepAwaySunlight ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showKeepAwaySunlight', !safeIso.showKeepAwaySunlight)}
+                        variant={safeIso.showKeepAwaySunlight ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                       <Chip
                         label="🌡 Temp Limits"
-                        color={template.isoSymbols.showTempLimit ? 'primary' : 'default'}
-                        onClick={() => handleUpdateIsoSymbol('showTempLimit', !template.isoSymbols.showTempLimit)}
-                        variant={template.isoSymbols.showTempLimit ? 'filled' : 'outlined'}
+                        color={safeIso.showTempLimit ? 'primary' : 'default'}
+                        onClick={() => handleUpdateIsoSymbol('showTempLimit', !safeIso.showTempLimit)}
+                        variant={safeIso.showTempLimit ? 'filled' : 'outlined'}
                         sx={{ fontWeight: 600 }}
                       />
                     </Box>
                   </Grid>
 
                   {/* Temperature limit options */}
-                  {template.isoSymbols.showTempLimit && (
+                  {safeIso.showTempLimit && (
                     <Grid size={{ xs: 12 }}>
                       <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
                         <TextField
                           label="Min Temp (e.g. 15°C)"
                           size="small"
-                          value={template.isoSymbols.tempMin || ''}
+                          value={safeIso.tempMin || ''}
                           onChange={(e) => handleUpdateIsoSymbol('tempMin', e.target.value)}
                         />
                         <TextField
                           label="Max Temp (e.g. 25°C)"
                           size="small"
-                          value={template.isoSymbols.tempMax || ''}
+                          value={safeIso.tempMax || ''}
                           onChange={(e) => handleUpdateIsoSymbol('tempMax', e.target.value)}
                         />
                       </Box>
@@ -914,20 +920,20 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                         <FormControlLabel
                           control={
                             <Switch
-                              checked={template.isoSymbols.showSterile}
+                              checked={safeIso.showSterile}
                               onChange={(e) => handleUpdateIsoSymbol('showSterile', e.target.checked)}
                             />
                           }
                           label="Sterilization Status Symbol"
                         />
-                        {template.isoSymbols.showSterile && (
+                        {safeIso.showSterile && (
                           <TextField
                             select
                             label="Sterile Method"
                             size="small"
                             fullWidth
                             sx={{ mt: 1 }}
-                            value={template.isoSymbols.sterileType || 'NON-STERILE'}
+                            value={safeIso.sterileType || 'NON-STERILE'}
                             onChange={(e) => handleUpdateIsoSymbol('sterileType', e.target.value)}
                           >
                             <MenuItem value="R">STERILE | R (Irradiation)</MenuItem>
@@ -942,19 +948,19 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                         <FormControlLabel
                           control={
                             <Switch
-                              checked={template.isoSymbols.showCeMark}
+                              checked={safeIso.showCeMark}
                               onChange={(e) => handleUpdateIsoSymbol('showCeMark', e.target.checked)}
                             />
                           }
                           label="CE Mark"
                         />
-                        {template.isoSymbols.showCeMark && (
+                        {safeIso.showCeMark && (
                           <TextField
                             label="Notified Body # (e.g. 0123)"
                             size="small"
                             fullWidth
                             sx={{ mt: 1 }}
-                            value={template.isoSymbols.notifiedBodyNumber || ''}
+                            value={safeIso.notifiedBodyNumber || ''}
                             onChange={(e) => handleUpdateIsoSymbol('notifiedBodyNumber', e.target.value)}
                           />
                         )}
@@ -1174,7 +1180,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                   {/* Product Code / REF */}
                   {template.showProductCode && (
                     <g transform={`translate(${padLeft}, ${padTop + (template.showSubtitle ? 11.2 : 9.8)})`}>
-                      {template.isoSymbols.showRef ? (
+                      {safeIso.showRef ? (
                         <>
                           <rect x={0} y={-2.2} width={5.5} height={2.6} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
                           <text x={2.75} y={-0.3} fontSize={1.7} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">REF</text>
@@ -1191,7 +1197,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                   {/* Batch Code / LOT */}
                   {template.showBatchCode && (
                     <g transform={`translate(${padLeft}, ${padTop + (template.showSubtitle ? 14.2 : 12.8)})`}>
-                      {template.isoSymbols.showLot ? (
+                      {safeIso.showLot ? (
                         <>
                           <rect x={0} y={-2.6} width={6.2} height={3.0} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
                           <text x={3.1} y={-0.4} fontSize={2.0} fontWeight="bold" fill="#000000" textAnchor="middle" fontFamily="Helvetica, Arial, sans-serif">LOT</text>
@@ -1242,7 +1248,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       const iconH = 3.6;
 
                       // MD Symbol
-                      if (template.isoSymbols.showMd) {
+                      if (safeIso.showMd) {
                         icons.push(
                           <g key="md" transform={`translate(${curX}, 0)`}>
                             <rect x={0} y={-iconH} width={5.2} height={iconH} fill="#ffffff" stroke="#000000" strokeWidth={0.25} rx={0.3} />
@@ -1253,7 +1259,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       }
 
                       // Single Use Symbol (2 with slash)
-                      if (template.isoSymbols.showSingleUse) {
+                      if (safeIso.showSingleUse) {
                         icons.push(
                           <g key="su" transform={`translate(${curX}, 0)`}>
                             <circle cx={1.8} cy={-1.8} r={1.8} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
@@ -1265,7 +1271,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       }
 
                       // Factory Manufacturer Symbol
-                      if (template.isoSymbols.showManufacturer) {
+                      if (safeIso.showManufacturer) {
                         icons.push(
                           <g key="mfg" transform={`translate(${curX}, 0)`}>
                             <path d="M0,0 L0,-2 L1.3,-3 L1.3,-2 L2.6,-3 L2.6,-1.5 L3.6,-1.5 L3.6,0 Z" fill="#000000" />
@@ -1275,7 +1281,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       }
 
                       // Expiry Hourglass
-                      if (template.isoSymbols.showExpiryDate) {
+                      if (safeIso.showExpiryDate) {
                         icons.push(
                           <g key="exp" transform={`translate(${curX}, 0)`}>
                             <line x1={0} y1={-iconH} x2={3} y2={-iconH} stroke="#000000" strokeWidth={0.25} />
@@ -1288,7 +1294,7 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       }
 
                       // Keep Dry Umbrella
-                      if (template.isoSymbols.showKeepDry) {
+                      if (safeIso.showKeepDry) {
                         icons.push(
                           <g key="dry" transform={`translate(${curX}, 0)`}>
                             <path d="M0,-1.8 Q1.7,-3.6 3.4,-1.8 Z" fill="#000000" />
@@ -1300,8 +1306,8 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       }
 
                       // Sterile / Non-Sterile
-                      if (template.isoSymbols.showSterile) {
-                        const st = template.isoSymbols.sterileType || 'NON-STERILE';
+                      if (safeIso.showSterile) {
+                        const st = safeIso.sterileType || 'NON-STERILE';
                         icons.push(
                           <g key="ste" transform={`translate(${curX}, 0)`}>
                             <rect x={0} y={-iconH} width={13} height={iconH} fill="#ffffff" stroke="#000000" strokeWidth={0.25} />
@@ -1314,12 +1320,12 @@ export const LabelTemplateEditor: React.FC<LabelTemplateEditorProps> = ({
                       }
 
                       // CE Mark
-                      if (template.isoSymbols.showCeMark) {
+                      if (safeIso.showCeMark) {
                         icons.push(
                           <g key="ce" transform={`translate(${curX}, 0)`}>
                             <text x={0} y={-1.0} fontSize={3.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">CE</text>
-                            {template.isoSymbols.notifiedBodyNumber && (
-                              <text x={0} y={1.2} fontSize={1.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">{template.isoSymbols.notifiedBodyNumber}</text>
+                            {safeIso.notifiedBodyNumber && (
+                              <text x={0} y={1.2} fontSize={1.2} fontWeight="bold" fill="#000000" fontFamily="Helvetica, Arial, sans-serif">{safeIso.notifiedBodyNumber}</text>
                             )}
                           </g>
                         );

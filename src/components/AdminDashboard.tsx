@@ -20,6 +20,8 @@ interface AdminDashboardProps {
   currentUserRole: string;
   currentUserName?: string;
   currentUserId?: string;
+  appSettings?: any;
+  onUpdateAppSettings?: (settings: any) => void;
 }
 
 const ShiftRow = ({ s, updateShiftTiming }: { s: ShiftSetting, updateShiftTiming: (id: string, start: string, end: string) => void }) => {
@@ -58,7 +60,7 @@ const ShiftRow = ({ s, updateShiftTiming }: { s: ShiftSetting, updateShiftTiming
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   machines, operators, moulds, products, rawMaterials, productMaterials, supervisors, shiftSettings, defectTypes, breakdownReasons, cleaningTasks, currentUserRole,
-  currentUserName = 'Admin', currentUserId
+  currentUserName = 'Admin', currentUserId, appSettings: _appSettings, onUpdateAppSettings
 }) => {
   const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users' | 'defects' | 'breakdowns' | 'checklist' | 'planning'>('machines');
   const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string, is_active?: boolean, last_seen_at?: string | null, revoked_reason?: string | null }[]>([]);
@@ -93,8 +95,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     Admin: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
-    PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
-    Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'About'],
+    Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'About'],
     QC: ['Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'About'],
     Planner: ['Planning & Labels', 'Batch Log', 'Shift Log', 'About'],
     Stores: ['Planning & Labels', 'Packing', 'About'],
@@ -146,7 +148,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [rolePermissions, setRolePermissions] = useState<Record<string, string[]>>(() => {
     try {
-      const saved = localStorage.getItem('mes_role_permissions');
+      const saved = localStorage.getItem('mes_role_permissions') || localStorage.getItem('immc_role_permissions');
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.warn('Failed to parse cached role permissions', e);
@@ -167,11 +169,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const saveAccessLevels = async () => {
+    if (currentUserRole !== 'Admin') {
+      showError('Only Administrators can modify system access permissions.');
+      return;
+    }
     setIsSavingPermissions(true);
     try {
       localStorage.setItem('mes_role_permissions', JSON.stringify(rolePermissions));
+      localStorage.setItem('immc_role_permissions', JSON.stringify(rolePermissions));
       localStorage.setItem('mes_user_types', JSON.stringify(userTypes));
       window.dispatchEvent(new CustomEvent('mes_permissions_updated', { detail: { rolePermissions, userTypes } }));
+
+      if (onUpdateAppSettings) {
+        onUpdateAppSettings((prev: any) => ({
+          ...prev,
+          role_permissions: rolePermissions,
+        }));
+      }
 
       const { error } = await supabase.from('app_settings').upsert({
         id: 'global',
@@ -235,6 +249,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (data?.role_permissions) {
           setRolePermissions(data.role_permissions);
           localStorage.setItem('mes_role_permissions', JSON.stringify(data.role_permissions));
+          localStorage.setItem('immc_role_permissions', JSON.stringify(data.role_permissions));
         }
       } catch (err) {
         console.warn('Could not fetch role_permissions from app_settings', err);
@@ -744,7 +759,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <TabButton id="planning" label="Production Planning" icon={Calendar} />
           <TabButton id="materials" label="Materials" icon={Database} />
           <TabButton id="operators" label="Operators" icon={Users} />
-          {['Admin', 'PowerUser', 'Supervisor'].includes(currentUserRole) && (
+          {currentUserRole === 'Admin' && (
             <TabButton id="users" label="Access Management" icon={ShieldCheck} />
           )}
           <TabButton id="shifts" label="Shift Setup" icon={Clock} />
@@ -1006,7 +1021,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {activeTab === 'users' && (
-        <div className="animate-fade-in">
+        currentUserRole !== 'Admin' ? (
+          <div className="card" style={{ padding: '32px', textAlign: 'center', margin: '20px auto', maxWidth: '600px' }}>
+            <ShieldAlert size={48} style={{ color: 'var(--red)', margin: '0 auto 16px' }} />
+            <h3 style={{ color: 'var(--red)', marginBottom: '8px' }}>Access Denied</h3>
+            <p style={{ color: 'var(--text3)' }}>Only System Administrators can manage User Accounts and Access Levels.</p>
+          </div>
+        ) : (
+          <div className="animate-fade-in">
           {/* Quick Invite Form */}
           <div className="card" style={{ marginBottom: '16px' }}>
             <div className="ch">
@@ -1302,6 +1324,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
+        )
       )}
 
       {activeTab === 'planning' && (
@@ -1688,7 +1711,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 color: 'var(--blue)', background: 'var(--blue-dim)',
                 padding: '3px 10px', borderRadius: '6px'
               }}>
-                v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.3.0'}
+                v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.3.1'}
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>

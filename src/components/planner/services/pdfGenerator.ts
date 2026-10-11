@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import type { LabelPaperType, ProductionPlan, ProductionPlanLabel } from '../../../types';
 import {
   DEFAULT_LABEL_TEMPLATE,
+  normalizeLabelTemplate,
   drawIsoSymbolOnPdf,
   type LabelTemplateConfig,
 } from './isoSymbols';
@@ -127,16 +128,16 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
     return seqA - seqB;
   });
 
-  let tpl: LabelTemplateConfig = options.template || paper?.template_config || DEFAULT_LABEL_TEMPLATE;
+  let tpl: LabelTemplateConfig = normalizeLabelTemplate(options.template || paper?.template_config);
   if (!options.template) {
     if (paper?.template_config && typeof paper.template_config === 'object') {
-      tpl = paper.template_config as LabelTemplateConfig;
+      tpl = normalizeLabelTemplate(paper.template_config as LabelTemplateConfig);
     } else if (paper?.id) {
       try {
         const saved =
           localStorage.getItem(`label_template_${paper.id}`) ||
           localStorage.getItem('label_template_global');
-        if (saved) tpl = JSON.parse(saved);
+        if (saved) tpl = normalizeLabelTemplate(JSON.parse(saved));
       } catch {
         // Fallback to default template if parsing fails
       }
@@ -281,9 +282,11 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       doc.setFontSize(8.5);
       doc.setTextColor(0, 0, 0);
 
+      const iso = tpl.isoSymbols || DEFAULT_LABEL_TEMPLATE.isoSymbols;
+
       if (tpl.showBatchCode) {
-        if (tpl.isoSymbols.showLot) {
-          drawIsoSymbolOnPdf(doc, 'LOT', contentX, contentY - 0.3, 6.0, 3.2, tpl.isoSymbols);
+        if (iso.showLot) {
+          drawIsoSymbolOnPdf(doc, 'LOT', contentX, contentY - 0.3, 6.0, 3.2, iso);
           doc.setFont('Helvetica', 'bold');
           doc.setFontSize(8.5);
           doc.setTextColor(0, 0, 0);
@@ -321,32 +324,32 @@ export async function buildQueuePDFDoc(options: QueueRenderOptions): Promise<jsP
       const isoY = y + lH - padBottom - (tpl.showQcApproval ? 7.6 : 4.5);
       const symH = 3.4;
 
-      if (tpl.isoSymbols.showMd) {
-        drawIsoSymbolOnPdf(doc, 'MD', isoX, isoY, 5.2, symH, tpl.isoSymbols);
+      if (iso.showMd) {
+        drawIsoSymbolOnPdf(doc, 'MD', isoX, isoY, 5.2, symH, iso);
         isoX += 6.0;
       }
-      if (tpl.isoSymbols.showSingleUse) {
-        drawIsoSymbolOnPdf(doc, 'SINGLE_USE', isoX, isoY, 3.6, symH, tpl.isoSymbols);
+      if (iso.showSingleUse) {
+        drawIsoSymbolOnPdf(doc, 'SINGLE_USE', isoX, isoY, 3.6, symH, iso);
         isoX += 4.5;
       }
-      if (tpl.isoSymbols.showManufacturer) {
-        drawIsoSymbolOnPdf(doc, 'MANUFACTURER', isoX, isoY, 3.6, symH, tpl.isoSymbols);
+      if (iso.showManufacturer) {
+        drawIsoSymbolOnPdf(doc, 'MANUFACTURER', isoX, isoY, 3.6, symH, iso);
         isoX += 4.5;
       }
-      if (tpl.isoSymbols.showExpiryDate) {
-        drawIsoSymbolOnPdf(doc, 'EXPIRY', isoX, isoY, 3.2, symH, tpl.isoSymbols);
+      if (iso.showExpiryDate) {
+        drawIsoSymbolOnPdf(doc, 'EXPIRY', isoX, isoY, 3.2, symH, iso);
         isoX += 4.0;
       }
-      if (tpl.isoSymbols.showKeepDry) {
-        drawIsoSymbolOnPdf(doc, 'KEEP_DRY', isoX, isoY, 3.4, symH, tpl.isoSymbols);
+      if (iso.showKeepDry) {
+        drawIsoSymbolOnPdf(doc, 'KEEP_DRY', isoX, isoY, 3.4, symH, iso);
         isoX += 4.2;
       }
-      if (tpl.isoSymbols.showSterile) {
-        drawIsoSymbolOnPdf(doc, 'STERILE', isoX, isoY, 13.0, symH, tpl.isoSymbols);
+      if (iso.showSterile) {
+        drawIsoSymbolOnPdf(doc, 'STERILE', isoX, isoY, 13.0, symH, iso);
         isoX += 14.0;
       }
-      if (tpl.isoSymbols.showCeMark) {
-        drawIsoSymbolOnPdf(doc, 'CE', isoX, isoY, 5.0, symH, tpl.isoSymbols);
+      if (iso.showCeMark) {
+        drawIsoSymbolOnPdf(doc, 'CE', isoX, isoY, 5.0, symH, iso);
         isoX += 6.0;
       }
 

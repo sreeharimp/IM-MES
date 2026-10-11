@@ -111,7 +111,11 @@ const StoreInwardingPage: React.FC<StoreInwardingPageProps> = ({
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 20000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
