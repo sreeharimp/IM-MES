@@ -99,6 +99,24 @@ export const DEFAULT_LABEL_TEMPLATE: LabelTemplateConfig = {
 };
 
 /**
+ * Safely normalizes and merges any stored or partial template config with defaults,
+ * guaranteeing all properties (especially isoSymbols) are defined.
+ */
+export function normalizeLabelTemplate(raw?: Partial<LabelTemplateConfig> | null): LabelTemplateConfig {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_LABEL_TEMPLATE, isoSymbols: { ...DEFAULT_LABEL_TEMPLATE.isoSymbols } };
+  }
+  return {
+    ...DEFAULT_LABEL_TEMPLATE,
+    ...raw,
+    isoSymbols: {
+      ...DEFAULT_LABEL_TEMPLATE.isoSymbols,
+      ...(raw.isoSymbols && typeof raw.isoSymbols === 'object' ? raw.isoSymbols : {}),
+    },
+  };
+}
+
+/**
  * Draws ISO 15223-1 symbols vectorially onto a jsPDF document with millimetric precision.
  */
 export function drawIsoSymbolOnPdf(

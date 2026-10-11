@@ -5,6 +5,7 @@ import {
   Tabs,
   Tab,
   Paper,
+  Button,
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import {
@@ -158,6 +159,70 @@ const imMesPlannerTheme = createTheme({
   },
 });
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  resetKey?: any;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class PlannerErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Planner sub-module caught error:', error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            borderRadius: 2,
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            bgcolor: 'rgba(239, 68, 68, 0.05)',
+            textAlign: 'center',
+          }}
+        >
+          <Typography variant="h6" sx={{ color: '#f87171', fontWeight: 700, mb: 1 }}>
+            Error Rendering Planner View
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#94a3b8', mb: 2, fontFamily: 'monospace', fontSize: '0.85rem' }}>
+            {this.state.error?.message || 'An unexpected rendering error occurred.'}
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={() => this.setState({ hasError: false, error: null })}
+            sx={{ textTransform: 'none' }}
+          >
+            Retry View
+          </Button>
+        </Paper>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 interface ProductionPlannerModuleProps {
   currentUser: {
     id: string;
@@ -290,36 +355,38 @@ export const ProductionPlannerModule: React.FC<ProductionPlannerModuleProps> = (
 
         {/* Active Tab View */}
         <Box>
-          {activeSubTab === 0 && (
-            <PlanList
-              products={products}
-              machines={machines}
-              currentUserName={currentUser.name}
-              currentUserRole={currentUser.role}
-              onNavigateToQueue={() => setActiveSubTab(1)}
-            />
-          )}
-          {activeSubTab === 1 && <PrintQueue currentUserName={currentUser.name} />}
-          {activeSubTab === 2 && (
-            <PaperManagement
-              currentUserRole={currentUser.role}
-              currentUserName={currentUser.name}
-            />
-          )}
-          {activeSubTab === 3 && (
-            <LabelTemplateEditor
-              currentUserRole={currentUser.role}
-              currentUserName={currentUser.name}
-            />
-          )}
-          {activeSubTab === 4 && (
-            <ProductPackSetup
-              products={products}
-              currentUserRole={currentUser.role}
-              onRefreshProducts={onRefreshProducts}
-            />
-          )}
-          {activeSubTab === 5 && <AuditTrailView />}
+          <PlannerErrorBoundary resetKey={activeSubTab}>
+            {activeSubTab === 0 && (
+              <PlanList
+                products={products}
+                machines={machines}
+                currentUserName={currentUser.name}
+                currentUserRole={currentUser.role}
+                onNavigateToQueue={() => setActiveSubTab(1)}
+              />
+            )}
+            {activeSubTab === 1 && <PrintQueue currentUserName={currentUser.name} />}
+            {activeSubTab === 2 && (
+              <PaperManagement
+                currentUserRole={currentUser.role}
+                currentUserName={currentUser.name}
+              />
+            )}
+            {activeSubTab === 3 && (
+              <LabelTemplateEditor
+                currentUserRole={currentUser.role}
+                currentUserName={currentUser.name}
+              />
+            )}
+            {activeSubTab === 4 && (
+              <ProductPackSetup
+                products={products}
+                currentUserRole={currentUser.role}
+                onRefreshProducts={onRefreshProducts}
+              />
+            )}
+            {activeSubTab === 5 && <AuditTrailView />}
+          </PlannerErrorBoundary>
         </Box>
       </Box>
     </ThemeProvider>

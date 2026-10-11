@@ -3,7 +3,7 @@ import {
   Search, Filter, Factory, AlertCircle, CheckCircle2,
   ChevronDown, ChevronRight, UserCheck, Package, Layers,
   ShieldCheck, ShieldAlert, AlertOctagon, QrCode, ChevronLeft,
-  Calendar, FlaskConical, Database, RefreshCw
+  Calendar, FlaskConical, Database, RefreshCw, Clock
 } from 'lucide-react';
 import type { BatchRecord, Product, Crate, Operator } from '../types';
 import { supabase } from '../lib/supabase';
@@ -247,6 +247,29 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
     const [y, m, d] = s.split('-');
     return `${d}/${m}/${y?.slice(2)}`;
   };
+  const formatDateOnly = (iso?: string | null) => {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = d.toLocaleString('en-US', { month: 'short' });
+      const year = d.getFullYear();
+      return `${day} ${month} ${year}`;
+    } catch {
+      return '—';
+    }
+  };
+  const formatTimeOnly = (iso?: string | null) => {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    } catch {
+      return '—';
+    }
+  };
 
   const toggleBatch = async (batchId: string) => {
     if (expandedBatchId === batchId) { setExpandedBatchId(null); return; }
@@ -260,7 +283,9 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
           startTime: c.start_time, endTime: c.end_time, grossQty: c.gross_qty, netQty: c.net_qty,
           rejectedCount: c.rejected_qty || 0, rejectionDetails: c.rejection_details || {},
           operatorId: c.operator_id, supervisorId: c.supervisor_id,
-          inspectedBy: c.inspected_by, inspectedAt: c.inspected_at, status: c.status
+          inspectedBy: c.inspected_by,
+          inspectedAt: c.inspected_at || (c.status === 'Completed' ? c.end_time : undefined),
+          status: c.status
         } as any));
         setBatchCrates(prev => ({ ...prev, [batchId]: mapped }));
         const comp = mapped.filter(c => c.status === 'Completed').length;
@@ -575,7 +600,7 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                                         </div>
                                         <div className="dt-wrap">
                                           <table className="dt sub-table" style={{ width: '100%', background: 'transparent' }}>
-                                            <thead><tr><th>Bin #</th><th>Net Qty</th><th>Rejections</th><th>Reject %</th><th>Inspector</th><th>Status</th></tr></thead>
+                                            <thead><tr><th>Bin #</th><th>Net Qty</th><th>Rejections</th><th>Reject %</th><th>Inspector</th><th>Inspected At</th><th>Status</th></tr></thead>
                                             <tbody>
                                               {crates.map(crate => {
                                                 const rTotal = (crate.netQty || 0) + (crate.rejectedCount || 0);
@@ -596,6 +621,26 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                                                         <UserCheck size={12} style={{ color: 'var(--blue)' }} />
                                                         <span style={{ fontSize: '11px' }}>{crate.inspectedBy ? (operators.find(o => o.id === crate.inspectedBy)?.name || crate.inspectedBy) : '---'}</span>
                                                       </div>
+                                                    </td>
+                                                    <td>
+                                                      {crate.inspectedAt || (crate.status === 'Completed' && crate.endTime) ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                            <Calendar size={11} style={{ color: 'var(--text3)', flexShrink: 0 }} />
+                                                            <span className="mono" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>
+                                                              {formatDateOnly(crate.inspectedAt || crate.endTime)}
+                                                            </span>
+                                                          </div>
+                                                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                            <Clock size={11} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+                                                            <span className="mono" style={{ fontSize: '10px', color: 'var(--text2)' }}>
+                                                              {formatTimeOnly(crate.inspectedAt || crate.endTime)}
+                                                            </span>
+                                                          </div>
+                                                        </div>
+                                                      ) : (
+                                                        <span style={{ fontSize: '10.5px', color: 'var(--text3)', fontStyle: 'italic' }}>Pending</span>
+                                                      )}
                                                     </td>
                                                     <td><span className={`pill ${crate.status === 'Completed' ? 'pg' : 'pa'}`} style={{ fontSize: '9px' }}>{crate.status}</span></td>
                                                   </tr>
@@ -640,8 +685,26 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                                                 <td>
                                                   <span className="pill" style={{ fontSize: '9.5px', padding: '2px 7px', fontWeight: 800, background: pkt.status === 'PASSED' ? 'rgba(16,185,129,0.15)' : pkt.status === 'REJECTED' ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)', color: pkt.status === 'PASSED' ? '#10b981' : pkt.status === 'REJECTED' ? '#ef4444' : '#f59e0b', border: `1px solid ${pkt.status === 'PASSED' ? 'rgba(16,185,129,0.3)' : pkt.status === 'REJECTED' ? 'rgba(239,68,68,0.35)' : 'rgba(245,158,11,0.35)'}` }}>{pkt.status}</span>
                                                 </td>
-                                                <td><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><UserCheck size={12} style={{ color: 'var(--blue)' }} /><span style={{ fontSize: '11px', fontWeight: 500 }}>{pkt.inspector_name}</span><span style={{ fontSize: '9.5px', color: 'var(--text3)' }}>({pkt.inspector_role})</span></div></td>
-                                                <td style={{ fontSize: '11px', color: 'var(--text2)' }}>{formatDate(pkt.inspected_at)}</td>
+                                                <td>
+                                                  {pkt.inspected_at ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                        <Calendar size={11} style={{ color: 'var(--text3)', flexShrink: 0 }} />
+                                                        <span className="mono" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>
+                                                          {formatDateOnly(pkt.inspected_at)}
+                                                        </span>
+                                                      </div>
+                                                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                        <Clock size={11} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+                                                        <span className="mono" style={{ fontSize: '10px', color: 'var(--text2)' }}>
+                                                          {formatTimeOnly(pkt.inspected_at)}
+                                                        </span>
+                                                      </div>
+                                                    </div>
+                                                  ) : (
+                                                    <span style={{ fontSize: '11px', color: 'var(--text3)' }}>—</span>
+                                                  )}
+                                                </td>
                                                 <td style={{ fontSize: '11px', color: pkt.defect_notes ? 'var(--amber)' : 'var(--text3)' }}>{pkt.defect_notes || '�'}</td>
                                                 <td>
                                                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>

@@ -182,7 +182,11 @@ const PackingPage: React.FC<PackingPageProps> = ({
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 20000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
 

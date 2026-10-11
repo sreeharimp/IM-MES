@@ -93,7 +93,8 @@ export const LiveDashboardPage: React.FC<LiveDashboardPageProps> = ({
         .select('*')
         .eq('status', 'Completed')
         .or(`inspected_at.gte.${todayStart},end_time.gte.${todayStart}`)
-        .order('inspected_at', { ascending: false });
+        .order('inspected_at', { ascending: false })
+        .limit(60);
 
       if (error) {
         console.error('Error fetching today inspections:', error);
@@ -108,17 +109,33 @@ export const LiveDashboardPage: React.FC<LiveDashboardPageProps> = ({
     }
   };
 
-  // Initial fetch and Realtime subscription for crates table
+  // Initial fetch, visibility handling, and debounced Realtime subscription for crates table
   useEffect(() => {
     fetchTodayInspections();
 
+    let debounceTimer: any = null;
     const channel = supabase.channel('live_dashboard_crates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'crates' }, () => {
-        fetchTodayInspections();
+        // Debounce Realtime burst triggers (1.5s) and only run if page is active
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (document.visibilityState === 'visible') {
+            fetchTodayInspections();
+          }
+        }, 1500);
       })
       .subscribe();
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchTodayInspections();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      clearTimeout(debounceTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(channel);
     };
   }, []);

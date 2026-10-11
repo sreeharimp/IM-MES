@@ -926,7 +926,21 @@ const App: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<{ type: 'status' | 'complete', data: any } | null>(null);
   const [pendingBreakdownMachineId, setPendingBreakdownMachineId] = useState<string | null>(null);
   
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(() => {
+    try {
+      const stored = localStorage.getItem('mes_role_permissions') || localStorage.getItem('immc_role_permissions');
+      if (stored) {
+        return {
+          id: 'global',
+          currentShift: 'A',
+          pendingHandover: false,
+          lastHandoverSummary: null,
+          role_permissions: JSON.parse(stored)
+        };
+      }
+    } catch (_) {}
+    return null;
+  });
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -940,19 +954,43 @@ const App: React.FC = () => {
   const [breakdownReasons, setBreakdownReasons] = useState<BreakdownReason[]>([]);
   const [cleaningTasks, setCleaningTasks] = useState<CleaningTask[]>([]);
 
+  // Listen for real-time RBAC updates from Admin Console in the same window/tabs
+  useEffect(() => {
+    const handlePermissionsUpdated = (e: any) => {
+      const updatedPerms = e.detail?.rolePermissions;
+      if (updatedPerms) {
+        setAppSettings(prev => prev ? { ...prev, role_permissions: updatedPerms } : {
+          id: 'global',
+          currentShift: 'A',
+          pendingHandover: false,
+          lastHandoverSummary: null,
+          role_permissions: updatedPerms
+        });
+      }
+    };
+    window.addEventListener('mes_permissions_updated', handlePermissionsUpdated);
+    return () => window.removeEventListener('mes_permissions_updated', handlePermissionsUpdated);
+  }, []);
+
   // RBAC: Compute accessible tabs for the logged-in user's role
   const userPermissions: Tab[] = React.useMemo(() => {
     const role = profile?.role || 'Supervisor';
+    if (role === 'Admin') {
+      return ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'];
+    }
+
     const permissionsMap = appSettings?.role_permissions || appSettings?.printLabels?.role_permissions || DEFAULT_ROLE_PERMISSIONS;
-    const basePermissions: Tab[] = [...(permissionsMap[role] || DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.Supervisor)];
-    // Always ensure Production Planner is available unless role is QC
-    if (role !== 'QC' && !basePermissions.includes('Production Planner')) {
-      basePermissions.splice(2, 0, 'Production Planner');
-    }
-    // Always ensure Final Inspection is available for Admin, PowerUser, Supervisor, and QC
-    if (['Admin', 'PowerUser', 'Supervisor', 'QC'].includes(role) && !basePermissions.includes('Final Inspection')) {
-      basePermissions.push('Final Inspection');
-    }
+    const rawRolePerms: string[] = (permissionsMap && permissionsMap[role]) 
+      ? permissionsMap[role] 
+      : (DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.Supervisor);
+
+    // Normalize module IDs (e.g., 'Planning & Labels' -> 'Production Planner')
+    const mappedPerms: Tab[] = rawRolePerms.map(t => {
+      if (t === 'Planning & Labels') return 'Production Planner' as Tab;
+      return t as Tab;
+    });
+
+    const basePermissions: Tab[] = Array.from(new Set(mappedPerms));
     return basePermissions;
   }, [profile?.role, appSettings?.role_permissions, appSettings?.printLabels]);
 
@@ -998,7 +1036,7 @@ const App: React.FC = () => {
 
         let localRolePerms: any = null;
         try {
-          const stored = localStorage.getItem('immc_role_permissions');
+          const stored = localStorage.getItem('mes_role_permissions') || localStorage.getItem('immc_role_permissions');
           if (stored) localRolePerms = JSON.parse(stored);
         } catch (_) {}
 
@@ -1010,7 +1048,7 @@ const App: React.FC = () => {
           outgoingSupervisorEmail: appData.last_handover_summary?.outgoing_supervisor_email,
           activeSupervisorName: appData.active_supervisor_name,
           printLabels: appData.print_labels,
-          role_permissions: appData.role_permissions || appData.print_labels?.role_permissions || localRolePerms || undefined
+          role_permissions: appData.role_permissions || localRolePerms || appData.print_labels?.role_permissions || undefined
         });
 
         // 2b. Auto-Authorize if user is the active supervisor
@@ -1596,9 +1634,14 @@ const App: React.FC = () => {
         );
       case 'Packing': return <PackingPage machines={machines} products={products} batchRecords={batchRecords} operators={operators} appSettings={appSettings} supervisorName={profile?.fullName || ''} />;
       case 'Machines': 
-        if (!userPermissions.includes('Machines') && profile?.role !== 'Admin' && profile?.role !== 'PowerUser') {
+        if (!userPermissions.includes('Machines') && profile?.role !== 'Admin') {
           setActiveTab(userPermissions[0] || 'Shop Floor');
-          return null;
+          return (
+            <div className="card" style={{ padding: '40px', textAlign: 'center', margin: '20px' }}>
+              <h3 style={{ color: 'var(--red)', marginBottom: '8px' }}>Access Denied</h3>
+              <p style={{ color: 'var(--text3)' }}>You do not have permission to access the Admin Console.</p>
+            </div>
+          );
         }
         return <AdminDashboard machines={machines} operators={operators} moulds={moulds} products={products} rawMaterials={rawMaterials} productMaterials={productMaterials} supervisors={[]} shiftSettings={shiftSettings} defectTypes={defectTypes} breakdownReasons={breakdownReasons} cleaningTasks={cleaningTasks} currentUserRole={profile?.role || 'Supervisor'} appSettings={appSettings} onUpdateAppSettings={setAppSettings} />;
       case 'Shift Log': return <ShiftLogPage machines={machines} operators={operators} products={products} moulds={moulds} />;
@@ -1830,7 +1873,7 @@ const App: React.FC = () => {
             {userPermissions.includes('Breakdowns') && (
               <NavItem icon={<AlertCircle size={16}/>} label="Breakdowns" active={activeTab==='Breakdowns'} onClick={()=>{setActiveTab('Breakdowns'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
-            {!isViewOnly && (profile?.role === 'Admin' || profile?.role === 'PowerUser' || userPermissions.includes('Machines')) && (
+            {!isViewOnly && (profile?.role === 'Admin' || userPermissions.includes('Machines')) && (
               <NavItem icon={<Cpu size={16}/>} label="Admin Console" active={activeTab==='Machines'} onClick={()=>{setActiveTab('Machines'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
             <div style={{ flex: 1 }} />

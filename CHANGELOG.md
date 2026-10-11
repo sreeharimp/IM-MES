@@ -12,9 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] — feature/versioning-stage1
+## [0.3.1] — 2026-10-11
 
 ### Added
+- **Strict Role-Based Access Control (RBAC):**
+  - Blocked non-admin and PowerUser bypasses to Admin Console (`Machines`) across sidebar navigation and route rendering.
+  - Restricted Access Management tab strictly to `Admin` with active access denial cards for unauthorized roles.
+  - Unified localStorage cache keys (`mes_role_permissions` and `immc_role_permissions`) and added live `mes_permissions_updated` window event synchronization.
+- **Traceability & Timestamps in Batch Log:**
+  - Added inspection timestamp display for visual inspection and final inspection crate records.
+- **Production Planner & Paper Templates:**
+  - Fixed blank page issue on Paper Template Management.
+  - Added comprehensive B-Tree composite indexes across hot tables (`crates`, `batch_records`, `packets`, `storage_bins`, `production_plans`) to resolve Supabase Disk IO budget exhaustion.
+  - Optimized Realtime subscriptions with debouncing and added visibility state pauses across Live Dashboard, Packing, Store Inwarding, and Stock pages.
+- **Database Security:**
+  - Added migration `20261011210000_enable_rls_all_public_tables.sql` resolving Supabase `rls_disabled_in_public` vulnerability.
+  - Added migration `20261011213000_optimize_disk_io_indexes.sql` to optimize database disk read throughput.
 - `.agents/rules/RULES.md` — Antigravity workspace rules (branch policy,
   conventional commits, migration discipline, secrets hygiene)
 - `supabase/migrations/` directory with naming convention README

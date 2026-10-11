@@ -137,7 +137,11 @@ const StockPage: React.FC<StockPageProps> = ({ machines, products }) => {
 
   useEffect(() => {
     fetchStockData();
-    const timer = setInterval(fetchStockData, 30000);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchStockData();
+      }
+    }, 45000);
     return () => clearInterval(timer);
   }, [fetchStockData]);
 

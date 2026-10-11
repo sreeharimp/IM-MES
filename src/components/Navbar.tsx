@@ -103,7 +103,7 @@ const Navbar: React.FC<NavbarProps> = ({
         {tabs
           .filter((tab) => {
             if (tab.id === 'Machines') {
-              return profile?.role === 'Admin' || profile?.role === 'PowerUser';
+              return profile?.role === 'Admin';
             }
             if (tab.id === 'Planning & Labels') {
               return ['Admin', 'PowerUser', 'Supervisor', 'Planner', 'Stores'].includes(
