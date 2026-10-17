@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   LogOut, Wrench, Factory, History, Cpu, Menu, 
   ChevronLeft, ChevronRight, ScrollText, CheckCircle2, 
-  Play, UserPlus, ClipboardList, Square, AlertCircle, Info, Pencil, X, ShieldCheck, Boxes, LayoutDashboard, CalendarDays
+  Play, UserPlus, ClipboardList, Square, AlertCircle, Info, Pencil, X, ShieldCheck, Boxes, LayoutDashboard, CalendarDays, Key
 } from 'lucide-react';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import type { Machine, MachineStatus, Operator, Product, Mould, RawMaterial, ProductMaterial, Crate, BatchRecord, ShiftSetting, AppSettings, DefectType, BreakdownReason, CleaningTask, Tab } from './types';
 import { DEFAULT_ROLE_PERMISSIONS } from './types';
 import { getBatchSummary, formatUnitId } from './utils/batchUtils';
@@ -906,7 +907,8 @@ const TopBarClock: React.FC = React.memo(() => {
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
-  const [profile, setProfile] = useState<{ fullName: string, email: string, role: string, employeeCode?: string } | null>(null);
+  const [profile, setProfile] = useState<{ fullName: string, email: string, role: string, employeeCode?: string, mustChangePassword?: boolean } | null>(null);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [isViewOnly, setIsViewOnly] = useState(false);
   const [isAuthorizedSession, setIsAuthorizedSession] = useState(false);
@@ -1019,7 +1021,7 @@ const App: React.FC = () => {
           supabase.from('app_settings').select('*').eq('id', 'global').maybeSingle(),
           supabase.from('shift_settings').select('*').order('id'),
           supabase.from('machines').select('*').order('id'),
-          supabase.from('profiles').select('full_name, email, role, employee_code').eq('id', session.user.id).maybeSingle(),
+          supabase.from('profiles').select('full_name, email, role, employee_code, must_change_password').eq('id', session.user.id).maybeSingle(),
           supabase.from('products').select('*'),
           supabase.from('operators').select('*'),
           supabase.from('batch_records').select('*').order('start_time', { ascending: false }).limit(60),
@@ -1078,7 +1080,7 @@ const App: React.FC = () => {
             oee: m.oee || 0, lastCleaningDone: m.last_cleaning_done, faiApproved: m.fai_approved
         })));
         if (pData) {
-          setProfile({ fullName: pData.full_name, email: pData.email, role: pData.role || 'Supervisor', employeeCode: pData.employee_code });
+          setProfile({ fullName: pData.full_name, email: pData.email, role: pData.role || 'Supervisor', employeeCode: pData.employee_code, mustChangePassword: !!pData.must_change_password });
         } else {
           // Auto-create missing profile from whitelist for new signups
           const { data: whitelist } = await supabase.from('authorized_supervisors').select('*').eq('email', session.user.email).maybeSingle();
@@ -1258,7 +1260,13 @@ const App: React.FC = () => {
     const profileSubscription = supabase.channel(`profile_${session.user.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
         const p = payload.new as any;
-        setProfile({ fullName: p.full_name, email: p.email, role: p.role || 'Supervisor', employeeCode: p.employee_code });
+        setProfile(prev => ({ 
+          fullName: p.full_name, 
+          email: p.email, 
+          role: p.role || 'Supervisor', 
+          employeeCode: p.employee_code,
+          mustChangePassword: !!p.must_change_password
+        }));
       })
       .subscribe();
 
@@ -1321,14 +1329,13 @@ const App: React.FC = () => {
         }
       }
 
-      // Upsert the main settings to clear the pending flag
-      const { error } = await supabase.from('app_settings').upsert({ 
-        id: 'global',
+      // Update the main settings to clear the pending flag
+      const { error } = await supabase.from('app_settings').update({ 
         pending_handover: false, 
         current_shift: sid, 
         last_handover_summary: null,
         active_supervisor_name: profile?.fullName || 'Unknown'
-      });
+      }).eq('id', 'global');
       
       localStorage.removeItem('isViewOnly'); // Clear view-mode when taking control
 
@@ -1351,6 +1358,32 @@ const App: React.FC = () => {
     } catch (err) { 
       console.error('Handover Acknowledge Catch:', err); 
       alert('An unexpected error occurred during handover acknowledgment.');
+    }
+  };
+
+  const handleTakeStationControl = async (targetSupervisorName?: string) => {
+    const sName = targetSupervisorName || profile?.fullName;
+    if (!sName) return;
+    try {
+      const { error } = await supabase.from('app_settings').update({
+        active_supervisor_name: sName,
+        pending_handover: false
+      }).eq('id', 'global');
+
+      if (error) {
+        console.error('Take Station Control Error:', error.message);
+        alert(`Could not set active supervisor: ${error.message}`);
+        return;
+      }
+
+      localStorage.removeItem('isViewOnly');
+      setIsViewOnly(false);
+      setIsAuthorizedSession(true);
+      setShowTakeControlModal(false);
+      setAppSettings(prev => prev ? { ...prev, activeSupervisorName: sName, pendingHandover: false } : null);
+    } catch (err: any) {
+      console.error('Take Station Control Catch:', err);
+      alert('An unexpected error occurred while setting active supervisor.');
     }
   };
 
@@ -1544,7 +1577,7 @@ const App: React.FC = () => {
             appSettings={appSettings} 
             shiftSettings={shiftSettings} 
             currentUserRole={profile?.role} 
-            currentSupervisorName={profile?.fullName} 
+            currentSupervisorName={appSettings?.activeSupervisorName || (profile?.role === 'Supervisor' ? profile?.fullName : undefined)} 
             onEditBin={isViewOnly ? undefined : (mid: string) => setEditingBinMachineId(mid)}
           />
         );
@@ -1624,6 +1657,7 @@ const App: React.FC = () => {
             products={products} 
             pendingCrates={pendingCrates} 
             operators={operators}
+            appSettings={appSettings}
             currentUser={{
               id: session?.user?.id || '',
               name: profile?.fullName || 'QC Inspector',
@@ -1718,9 +1752,7 @@ const App: React.FC = () => {
                  <div style={{display:'flex', gap:'12px'}}>
                     <button className="btn bsec" style={{flex:1}} onClick={() => setShowTakeControlModal(false)}>Cancel</button>
                     <button className="btn bpri" style={{flex:1}} onClick={() => {
-                       setShowTakeControlModal(false);
-                       setIsAuthorizedSession(true);
-                       handleHandoverAcknowledge(appSettings?.currentShift || 'A');
+                       handleTakeStationControl(profile?.fullName);
                     }}>Confirm Takeover</button>
                  </div>
               </div>
@@ -1779,9 +1811,7 @@ const App: React.FC = () => {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button className="btn bsec" style={{ flex: 1 }} onClick={() => setShowTakeControlModal(false)}>Cancel</button>
                 <button className="btn bpri" style={{ flex: 1 }} onClick={() => {
-                  setShowTakeControlModal(false);
-                  setIsViewOnly(false);
-                  handleHandoverAcknowledge(appSettings?.currentShift || 'A');
+                  handleTakeStationControl(profile?.fullName);
                 }}>Confirm Takeover</button>
               </div>
             </div>
@@ -1816,6 +1846,20 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Change Password Modal (Forced on admin reset, or on-demand via topbar) */}
+      <ChangePasswordModal
+        isOpen={!!profile?.mustChangePassword || isChangePasswordOpen}
+        forced={!!profile?.mustChangePassword}
+        userEmail={profile?.email}
+        userName={profile?.fullName}
+        onClose={() => setIsChangePasswordOpen(false)}
+        onSuccess={() => {
+          setProfile(prev => prev ? { ...prev, mustChangePassword: false } : prev);
+          setIsChangePasswordOpen(false);
+        }}
+        onLogout={() => supabase.auth.signOut()}
+      />
 
       {/* 2. Navigation Components */}
       <div 
@@ -1911,16 +1955,46 @@ const App: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div className="pill pg" style={{ padding: '2px 8px', fontSize: '10px', fontWeight: 800 }}>S-{appSettings?.currentShift || 'A'}</div>
               <div className="desktop-only">
-                {(profile?.role === 'Supervisor' ? profile?.fullName : appSettings?.activeSupervisorName) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text2)', borderLeft: '1px solid var(--border)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600 }}>{profile?.role === 'Supervisor' ? profile?.fullName : appSettings?.activeSupervisorName}</span>
-                  </div>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text2)', borderLeft: '1px solid var(--border)', paddingLeft: '12px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Supervisor:</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>
+                    {appSettings?.activeSupervisorName || 'On Duty'}
+                  </span>
+                  {profile?.role === 'Supervisor' && profile?.fullName && appSettings?.activeSupervisorName !== profile.fullName && (
+                    <button 
+                      className="btn bpri bsm" 
+                      style={{ padding: '2px 8px', height: '22px', fontSize: '10px', marginLeft: '2px' }}
+                      title="Set yourself as the active on-duty supervisor"
+                      onClick={() => handleTakeStationControl(profile.fullName)}
+                    >
+                      Set Active
+                    </button>
+                  )}
+                  {isViewOnly && (
+                    <span 
+                      className="pill py" 
+                      style={{ fontSize: '9px', padding: '1px 6px', cursor: 'pointer' }}
+                      title="Click to take control"
+                      onClick={() => setShowTakeControlModal(true)}
+                    >
+                      View Only
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
           <div style={{ textAlign: 'right', display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <button 
+              className="btn bsec bsm" 
+              style={{ padding: '3px 8px', height: '26px', fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              onClick={() => setIsChangePasswordOpen(true)}
+              title="Change your password"
+            >
+              <Key size={12} />
+              <span className="desktop-only" style={{ fontSize: '10px', fontWeight: 600 }}>Change Password</span>
+            </button>
             <button 
               className="btn bdan bsm" 
               style={{ padding: '3px 8px', height: '26px', fontSize: '10px' }}

@@ -267,7 +267,10 @@ export const LiveDashboardPage: React.FC<LiveDashboardPageProps> = ({
     };
   }, [todayInspections, products, batchRecords, shiftSettings, appSettings?.currentShift]);
 
-  const activeSupervisorDisplay = currentSupervisorName || appSettings?.activeSupervisorName || 'On Duty';
+  const isGeneric = (name?: string | null) => !name || name.trim() === '' || name.toLowerCase().trim() === 'supervisor';
+  const activeSupervisorDisplay = !isGeneric(appSettings?.activeSupervisorName) 
+    ? appSettings!.activeSupervisorName! 
+    : (!isGeneric(currentSupervisorName) ? currentSupervisorName! : 'On Duty');
 
   return (
     <div className="animate-fade-in" style={{ padding: '4px 0 30px 0' }}>

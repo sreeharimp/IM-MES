@@ -28,12 +28,14 @@ import {
   Info as InfoIcon,
   Build as MaintenanceIcon,
   LocalOffer as LabelIcon,
+  VpnKey as KeyIcon,
 } from '@mui/icons-material';
 
 interface NavbarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   onLogout: () => void;
+  onOpenChangePassword?: () => void;
   profile?: { fullName: string; email: string; role: string } | null;
   isCollapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
@@ -217,6 +219,17 @@ const Navbar: React.FC<NavbarProps> = ({
                 </Typography>
               </MenuItem>
               <Divider />
+              {onOpenChangePassword && (
+                <MenuItem
+                  onClick={() => {
+                    handleMenuClose();
+                    onOpenChangePassword();
+                  }}
+                >
+                  <KeyIcon fontSize="small" sx={{ mr: 1 }} />
+                  Change Password
+                </MenuItem>
+              )}
               <MenuItem
                 onClick={() => {
                   handleMenuClose();

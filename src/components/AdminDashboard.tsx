@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, Users, Box, Layers, Database, Cpu, RefreshCcw, Edit2, X, ShieldCheck, Clock, AlertTriangle, Wrench, Calendar, Lock, UserCheck, LogOut, UserX, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Users, Box, Layers, Database, Cpu, RefreshCcw, Edit2, X, ShieldCheck, Clock, AlertTriangle, Wrench, Calendar, Lock, UserCheck, LogOut, UserX, ShieldAlert, Key, KeyRound, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import type { Machine, Operator, Mould, Product, RawMaterial, ProductMaterial, ShiftSetting, DefectType, BreakdownReason, CleaningTask } from '../types';
 import { supabase } from '../lib/supabase';
 import { logSystemChange } from '../utils/systemChanges';
@@ -63,7 +63,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   currentUserName = 'Admin', currentUserId, appSettings: _appSettings, onUpdateAppSettings
 }) => {
   const [activeTab, setActiveTab] = useState<'machines' | 'moulds' | 'products' | 'materials' | 'operators' | 'shifts' | 'users' | 'defects' | 'breakdowns' | 'checklist' | 'planning'>('machines');
-  const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string, is_active?: boolean, last_seen_at?: string | null, revoked_reason?: string | null }[]>([]);
+  const [profiles, setProfiles] = useState<{ id: string, email: string, full_name: string, role: string, employee_code?: string, is_active?: boolean, last_seen_at?: string | null, revoked_reason?: string | null, must_change_password?: boolean }[]>([]);
+  
+  // Password Reset States
+  const [resetUser, setResetUser] = useState<{ id: string, email: string, full_name: string } | null>(null);
+  const [isBulkResetOpen, setIsBulkResetOpen] = useState(false);
+  const [tempPassword, setTempPassword] = useState('');
+  const [showTempPassword, setShowTempPassword] = useState(false);
+  const [requireChangeOnLogin, setRequireChangeOnLogin] = useState(true);
+  const [excludeAdmins, setExcludeAdmins] = useState(true);
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [isSubmittingReset, setIsSubmittingReset] = useState(false);
+  const [showSqlHelpModal, setShowSqlHelpModal] = useState(false);
+  const [sqlHelpMessage, setSqlHelpMessage] = useState('');
+  const [copiedSql, setCopiedSql] = useState(false);
+
   const [newSupervisor, setNewSupervisor] = useState({ email: '', fullName: '', employeeCode: '' });
   const [newOperator, setNewOperator] = useState({ name: '', employeeId: '' });
   const [newMould, setNewMould] = useState({ id: '', name: '', cavities: 4, cycleTime: 20 });
@@ -90,6 +104,65 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Active Supervisor & Shift Controls
+  const [selectedActiveSupervisor, setSelectedActiveSupervisor] = useState<string>(_appSettings?.activeSupervisorName || '');
+  const [selectedActiveShift, setSelectedActiveShift] = useState<string>(_appSettings?.currentShift || 'A');
+  const [isUpdatingActiveDuty, setIsUpdatingActiveDuty] = useState(false);
+
+  useEffect(() => {
+    if (_appSettings?.activeSupervisorName) {
+      setSelectedActiveSupervisor(_appSettings.activeSupervisorName);
+    }
+    if (_appSettings?.currentShift) {
+      setSelectedActiveShift(_appSettings.currentShift);
+    }
+  }, [_appSettings?.activeSupervisorName, _appSettings?.currentShift]);
+
+  const handleUpdateActiveDuty = async () => {
+    if (!selectedActiveSupervisor) {
+      showError('Please select a supervisor.');
+      return;
+    }
+    setIsUpdatingActiveDuty(true);
+    try {
+      const updatePayload: any = {
+        active_supervisor_name: selectedActiveSupervisor,
+        pending_handover: false
+      };
+      if (selectedActiveShift) {
+        updatePayload.current_shift = selectedActiveShift;
+      }
+
+      const { error } = await supabase.from('app_settings').update(updatePayload).eq('id', 'global');
+      if (error) {
+        showError(`Could not update active duty: ${error.message}`);
+        return;
+      }
+
+      await logSystemChange(
+        supabase,
+        'SYSTEM_PARAM_UPDATE',
+        `Active duty assigned to ${selectedActiveSupervisor} (Shift ${selectedActiveShift || _appSettings?.currentShift || 'A'})`,
+        currentUserId || 'admin',
+        currentUserName || 'Admin'
+      );
+
+      showSuccess(`Active supervisor updated to ${selectedActiveSupervisor} (Shift ${selectedActiveShift || _appSettings?.currentShift || 'A'}).`);
+      if (onUpdateAppSettings) {
+        onUpdateAppSettings((prev: any) => prev ? {
+          ...prev,
+          activeSupervisorName: selectedActiveSupervisor,
+          currentShift: selectedActiveShift || prev.currentShift,
+          pendingHandover: false
+        } : null);
+      }
+    } catch (err: any) {
+      showError(err.message || 'Failed to update active supervisor');
+    } finally {
+      setIsUpdatingActiveDuty(false);
+    }
+  };
 
   const DEFAULT_USER_TYPES = ['Admin', 'PowerUser', 'Supervisor', 'QC', 'Planner', 'Stores', 'Operator'];
 
@@ -238,7 +311,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         employee_code: p.employee_code,
         is_active: p.is_active,
         last_seen_at: p.last_seen_at,
-        revoked_reason: p.revoked_reason
+        revoked_reason: p.revoked_reason,
+        must_change_password: p.must_change_password
       })));
     };
     fetchProfiles();
@@ -716,6 +790,146 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const generateRandomPassword = () => {
+    const num = Math.floor(1000 + Math.random() * 9000);
+    return `Immc@${num}!`;
+  };
+
+  const openResetUserModal = (user: { id: string, email: string, full_name: string }) => {
+    setResetUser(user);
+    setTempPassword(generateRandomPassword());
+    setShowTempPassword(true);
+    setRequireChangeOnLogin(true);
+  };
+
+  const openBulkResetModal = () => {
+    setIsBulkResetOpen(true);
+    setTempPassword(generateRandomPassword());
+    setShowTempPassword(true);
+    setExcludeAdmins(true);
+    setBulkConfirm(false);
+  };
+
+  const handleResetUserPassword = async () => {
+    if (!resetUser) return;
+    if (!tempPassword || tempPassword.length < 6) {
+      showError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setIsSubmittingReset(true);
+    try {
+      const { data: _data, error } = await supabase.rpc('admin_reset_user_password', {
+        target_user_id: resetUser.id,
+        new_password: tempPassword,
+        require_change: requireChangeOnLogin,
+        admin_id: currentUserId,
+      });
+
+      if (error) {
+        if (error.message?.includes('function') || error.code === '42883' || error.message?.includes('does not exist')) {
+          setSqlHelpMessage('The database procedure `admin_reset_user_password` is not installed yet. Please run `admin_password_reset.sql` in your Supabase SQL Editor.');
+          setShowSqlHelpModal(true);
+          return;
+        }
+        throw error;
+      }
+
+      showSuccess(`Password reset for ${resetUser.full_name || resetUser.email}!`);
+      logSystemChange({
+        module: 'Access Control',
+        tableName: 'profiles',
+        recordId: resetUser.id,
+        fieldChanged: 'password',
+        oldValue: 'Existing Password',
+        newValue: requireChangeOnLogin ? 'Reset (Must Change on Login)' : 'Reset',
+        action: 'UPDATE',
+        reason: `Admin reset password for ${resetUser.email}`,
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
+
+      setProfiles(prev => prev.map(p => p.id === resetUser.id ? { ...p, must_change_password: requireChangeOnLogin } : p));
+      setResetUser(null);
+      setTempPassword('');
+    } catch (err: any) {
+      showError(`Password reset failed: ${err.message}`);
+    } finally {
+      setIsSubmittingReset(false);
+    }
+  };
+
+  const handleBulkResetPasswords = async () => {
+    if (!tempPassword || tempPassword.length < 6) {
+      showError('Temporary password must be at least 6 characters long.');
+      return;
+    }
+    if (!bulkConfirm) {
+      showError('Please check the confirmation box before proceeding.');
+      return;
+    }
+
+    setIsSubmittingReset(true);
+    try {
+      const { data, error } = await supabase.rpc('admin_bulk_reset_passwords', {
+        new_password: tempPassword,
+        exclude_admins: excludeAdmins,
+        require_change: true,
+        admin_id: currentUserId,
+      });
+
+      if (error) {
+        if (error.message?.includes('function') || error.code === '42883' || error.message?.includes('does not exist')) {
+          setSqlHelpMessage('The database procedure `admin_bulk_reset_passwords` is not installed yet. Please run `admin_password_reset.sql` in your Supabase SQL Editor.');
+          setShowSqlHelpModal(true);
+          return;
+        }
+        throw error;
+      }
+
+      const count = data?.count ?? 'all';
+      showSuccess(`Reset password for ${count} users! Each user will be prompted to change password on next login.`);
+      logSystemChange({
+        module: 'Access Control',
+        tableName: 'profiles',
+        recordId: 'all',
+        fieldChanged: 'password_bulk',
+        oldValue: 'Existing Passwords',
+        newValue: `Bulk Reset for ${count} users (Must change on login)`,
+        action: 'UPDATE',
+        reason: `Admin bulk reset passwords (exclude_admins=${excludeAdmins})`,
+        changedByName: currentUserName,
+        changedByRole: currentUserRole,
+        changedById: currentUserId,
+      });
+
+      // Reload profiles
+      const { data: refreshed } = await supabase.from('profiles').select('*').order('full_name');
+      if (refreshed) {
+        setProfiles(refreshed.map(p => ({
+          id: p.id,
+          email: p.email,
+          full_name: p.full_name,
+          role: p.role,
+          employee_code: p.employee_code,
+          is_active: p.is_active,
+          last_seen_at: p.last_seen_at,
+          revoked_reason: p.revoked_reason,
+          must_change_password: p.must_change_password,
+        })));
+      }
+
+      setIsBulkResetOpen(false);
+      setTempPassword('');
+      setBulkConfirm(false);
+    } catch (err: any) {
+      showError(`Bulk reset failed: ${err.message}`);
+    } finally {
+      setIsSubmittingReset(false);
+    }
+  };
+
   const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
     <button 
       onClick={() => setActiveTab(id)}
@@ -1059,7 +1273,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="cb">
               <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
                  <div style={{ flex: 1 }}>
-                   <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px' }}>Active User Profiles</div>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                     <div style={{ fontWeight: 600, fontSize: '14px' }}>Active User Profiles ({profiles.length})</div>
+                     <button 
+                       className="btn bsm"
+                       style={{
+                         height: '28px',
+                         padding: '0 10px',
+                         fontSize: '11px',
+                         fontWeight: 600,
+                         display: 'inline-flex',
+                         alignItems: 'center',
+                         gap: '5px',
+                         background: 'rgba(234, 179, 8, 0.15)',
+                         color: '#eab308',
+                         border: '1px solid rgba(234, 179, 8, 0.35)'
+                       }}
+                       onClick={openBulkResetModal}
+                       title="Set a temporary password for all users and require them to change it on next login"
+                     >
+                       <Key size={12} />
+                       <span>Reset All Passwords</span>
+                     </button>
+                   </div>
                    <table className="dt">
                     <thead>
                       <tr>
@@ -1106,6 +1342,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               ) : (
                                 <span className="pill pd" style={{ fontSize: '10px', color: 'var(--text3)' }}>Offline</span>
                               )}
+                              {p.must_change_password && (
+                                <div style={{ marginTop: '3px' }}>
+                                  <span className="pill py" style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="User has not set a new password yet">
+                                    <Key size={9} /> Reset Pending
+                                  </span>
+                                </div>
+                              )}
                             </td>
                             <td style={{ fontSize: '11px', color: 'var(--text2)' }}>
                               {formatLastSeen(p)}
@@ -1123,6 +1366,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <option key={role} value={role}>{role}</option>
                                   ))}
                                 </select>
+
+                                {/* Reset Password */}
+                                <button 
+                                  className="btn bsm" 
+                                  style={{
+                                    height: '26px',
+                                    padding: '0 8px',
+                                    fontSize: '10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    background: 'rgba(234, 179, 8, 0.12)',
+                                    color: '#eab308',
+                                    border: '1px solid rgba(234, 179, 8, 0.3)'
+                                  }}
+                                  title={`Reset password for ${p.full_name || p.email}`}
+                                  onClick={() => openResetUserModal(p)}
+                                >
+                                  <Key size={11} />
+                                  <span>Reset Pwd</span>
+                                </button>
 
                                 {/* Manual Force Logout */}
                                 <button 
@@ -1343,6 +1607,100 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {activeTab === 'shifts' && (
+        <>
+        <div className="card animate-scale-in" style={{ marginBottom: '16px' }}>
+          <div className="ch">
+            <span className="ct2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldCheck size={14} /> Active Shift & On-Duty Supervisor Control
+            </span>
+          </div>
+          <div className="cb">
+            <p style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '16px', padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
+              Directly assign or correct the on-duty shift and active supervisor. Changes apply in real-time across all shop floor stations, live dashboards, and mobile devices without wiping production metrics.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', alignItems: 'flex-end' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text3)', marginBottom: '6px' }}>
+                  Current Active Supervisor
+                </label>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--blue)', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                  {_appSettings?.activeSupervisorName || 'Not Set (Defaulting to On Duty)'}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text3)', marginBottom: '6px' }}>
+                  Assign New Active Supervisor
+                </label>
+                <select
+                  className="fi"
+                  style={{ width: '100%', padding: '8px' }}
+                  value={selectedActiveSupervisor}
+                  onChange={e => setSelectedActiveSupervisor(e.target.value)}
+                >
+                  <option value="">-- Select Supervisor --</option>
+                  {profiles.filter(p => p.role === 'Supervisor' || p.role === 'Admin').map(p => (
+                    <option key={p.id} value={p.full_name}>
+                      {p.full_name} ({p.role}{p.employee_code ? ` - ID: ${p.employee_code}` : ''})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text3)', marginBottom: '6px' }}>
+                  Active Shift
+                </label>
+                <select
+                  className="fi"
+                  style={{ width: '100%', padding: '8px' }}
+                  value={selectedActiveShift}
+                  onChange={e => setSelectedActiveShift(e.target.value)}
+                >
+                  {shiftSettings.map(s => (
+                    <option key={s.id} value={s.id}>
+                      Shift {s.name} ({s.startTime} - {s.endTime})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <button
+                  className="btn bpri"
+                  style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={handleUpdateActiveDuty}
+                  disabled={!selectedActiveSupervisor || isUpdatingActiveDuty}
+                >
+                  <ShieldCheck size={14} /> {isUpdatingActiveDuty ? 'Updating...' : 'Update Active Supervisor'}
+                </button>
+              </div>
+            </div>
+
+            {_appSettings?.pendingHandover && (
+              <div style={{ marginTop: '16px', padding: '10px 14px', background: 'rgba(255, 170, 0, 0.1)', border: '1px solid rgba(255, 170, 0, 0.3)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--amber)' }}>
+                  ⚠️ A shift handover flag is currently marked as pending. This may block incoming supervisor sign-ins.
+                </span>
+                <button
+                  className="btn bsm bsec"
+                  onClick={async () => {
+                    const { error } = await supabase.from('app_settings').update({ pending_handover: false }).eq('id', 'global');
+                    if (error) showError(error.message);
+                    else {
+                      showSuccess('Pending handover flag cleared.');
+                      if (onUpdateAppSettings) onUpdateAppSettings((prev: any) => prev ? { ...prev, pendingHandover: false } : null);
+                    }
+                  }}
+                >
+                  Clear Handover Block
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="card animate-scale-in">
           <div className="ch">
             <span className="ct2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1369,6 +1727,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </table>
           </div>
         </div>
+        </>
       )}
 
       {activeTab === 'defects' && (
@@ -1750,6 +2109,274 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </span>
         </div>
       </div>
+
+      {/* ── Modal: Single User Password Reset ─────────────────────── */}
+      {resetUser && (
+        <div className="ov animate-fade-in" style={{ zIndex: 9999, background: 'rgba(5, 11, 20, 0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={(e) => { if (e.target === e.currentTarget && !isSubmittingReset) setResetUser(null); }}>
+          <div className="modal animate-scale-in" style={{ width: '100%', maxWidth: '440px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(234, 179, 8, 0.08) 0%, transparent 100%)' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308' }}>
+                  <Key size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>Reset User Password</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'var(--text2)' }}>Set a temporary password for this user</p>
+                </div>
+              </div>
+              <button className="btn bsm bsec" onClick={() => setResetUser(null)} disabled={isSubmittingReset} style={{ padding: '4px', borderRadius: '6px' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px 24px' }}>
+              {/* Target User Info */}
+              <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '2px' }}>Target User:</div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>{resetUser.full_name || 'User'}</div>
+                <div style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text2)' }}>{resetUser.email}</div>
+              </div>
+
+              {/* Password Input */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text2)' }}>New Temporary Password</label>
+                  <button 
+                    type="button"
+                    className="btn bsm bsec" 
+                    style={{ fontSize: '10px', padding: '2px 8px', height: '22px' }}
+                    onClick={() => setTempPassword(generateRandomPassword())}
+                    title="Generate random password"
+                  >
+                    Generate Random
+                  </button>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showTempPassword ? 'text' : 'password'}
+                    className="fi"
+                    style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
+                    placeholder="Enter password (min. 6 chars)"
+                    value={tempPassword}
+                    onChange={(e) => setTempPassword(e.target.value)}
+                    disabled={isSubmittingReset}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowTempPassword(!showTempPassword)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  >
+                    {showTempPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Require Change Checkbox */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text)' }}>
+                  <input
+                    type="checkbox"
+                    checked={requireChangeOnLogin}
+                    onChange={(e) => setRequireChangeOnLogin(e.target.checked)}
+                    disabled={isSubmittingReset}
+                  />
+                  <span>Require user to change password on next login (Recommended)</span>
+                </label>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="btn bsec" style={{ flex: 1 }} onClick={() => setResetUser(null)} disabled={isSubmittingReset}>
+                  Cancel
+                </button>
+                <button
+                  className="btn bpri"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 700 }}
+                  onClick={handleResetUserPassword}
+                  disabled={!tempPassword || tempPassword.length < 6 || isSubmittingReset}
+                >
+                  <Key size={14} />
+                  <span>{isSubmittingReset ? 'Resetting...' : 'Confirm Reset'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Bulk Password Reset (All Users) ────────────────── */}
+      {isBulkResetOpen && (
+        <div className="ov animate-fade-in" style={{ zIndex: 9999, background: 'rgba(5, 11, 20, 0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={(e) => { if (e.target === e.currentTarget && !isSubmittingReset) setIsBulkResetOpen(false); }}>
+          <div className="modal animate-scale-in" style={{ width: '100%', maxWidth: '480px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(234, 179, 8, 0.1) 0%, transparent 100%)' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308' }}>
+                  <KeyRound size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'var(--text)' }}>Bulk Reset Passwords</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'var(--text2)' }}>Set a temporary password for all users</p>
+                </div>
+              </div>
+              <button className="btn bsm bsec" onClick={() => setIsBulkResetOpen(false)} disabled={isSubmittingReset} style={{ padding: '4px', borderRadius: '6px' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px 24px' }}>
+              {/* Notice */}
+              <div style={{ marginBottom: '16px', padding: '12px 14px', borderRadius: '8px', background: 'rgba(234, 179, 8, 0.08)', border: '1px solid rgba(234, 179, 8, 0.25)', color: '#fef08a', fontSize: '12px', lineHeight: '1.5' }}>
+                <strong>How it works:</strong> All affected accounts will receive this temporary password. Upon their next login, every user will immediately receive a prompt to create their own personal password.
+              </div>
+
+              {/* Password Input */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text2)' }}>Temporary Password for All Users</label>
+                  <button 
+                    type="button"
+                    className="btn bsm bsec" 
+                    style={{ fontSize: '10px', padding: '2px 8px', height: '22px' }}
+                    onClick={() => setTempPassword(generateRandomPassword())}
+                    title="Generate random password"
+                  >
+                    Generate Random
+                  </button>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showTempPassword ? 'text' : 'password'}
+                    className="fi"
+                    style={{ width: '100%', paddingRight: '40px', boxSizing: 'border-box' }}
+                    placeholder="Enter shared temporary password"
+                    value={tempPassword}
+                    onChange={(e) => setTempPassword(e.target.value)}
+                    disabled={isSubmittingReset}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowTempPassword(!showTempPassword)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  >
+                    {showTempPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Scope options */}
+              <div style={{ marginBottom: '14px', padding: '12px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text)', marginBottom: '8px' }}>
+                  <input
+                    type="checkbox"
+                    checked={excludeAdmins}
+                    onChange={(e) => setExcludeAdmins(e.target.checked)}
+                    disabled={isSubmittingReset}
+                  />
+                  <span>Exclude Administrator accounts (Recommended)</span>
+                </label>
+                <div style={{ fontSize: '11px', color: 'var(--text3)', marginLeft: '22px' }}>
+                  Affected users: <strong>{profiles.filter(p => (!excludeAdmins || p.role !== 'Admin') && p.id !== currentUserId).length}</strong> user(s)
+                </div>
+              </div>
+
+              {/* Confirmation Checkbox */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text)' }}>
+                  <input
+                    type="checkbox"
+                    checked={bulkConfirm}
+                    onChange={(e) => setBulkConfirm(e.target.checked)}
+                    disabled={isSubmittingReset}
+                    style={{ marginTop: '2px' }}
+                  />
+                  <span>I confirm resetting passwords for all affected users with this temporary password.</span>
+                </label>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="btn bsec" style={{ flex: 1 }} onClick={() => setIsBulkResetOpen(false)} disabled={isSubmittingReset}>
+                  Cancel
+                </button>
+                <button
+                  className="btn bpri"
+                  style={{
+                    flex: 1.3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    fontWeight: 700,
+                    background: 'var(--gold, #eab308)',
+                    borderColor: 'var(--gold, #eab308)',
+                    color: '#000'
+                  }}
+                  onClick={handleBulkResetPasswords}
+                  disabled={!tempPassword || tempPassword.length < 6 || !bulkConfirm || isSubmittingReset}
+                >
+                  <Key size={14} />
+                  <span>{isSubmittingReset ? 'Resetting Passwords...' : 'Reset All Passwords'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: SQL Setup Guide (If RPC missing) ──────────────── */}
+      {showSqlHelpModal && (
+        <div className="ov animate-fade-in" style={{ zIndex: 10000, background: 'rgba(5, 11, 20, 0.9)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={(e) => { if (e.target === e.currentTarget) setShowSqlHelpModal(false); }}>
+          <div className="modal animate-scale-in" style={{ width: '100%', maxWidth: '520px', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.1) 0%, transparent 100%)' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#38bdf8' }}>
+                  <ShieldAlert size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'var(--text)' }}>Database Setup Required</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'var(--text2)' }}>One-time SQL Migration for Password Reset</p>
+                </div>
+              </div>
+              <button className="btn bsm bsec" onClick={() => setShowSqlHelpModal(false)} style={{ padding: '4px', borderRadius: '6px' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px 24px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text)', lineHeight: '1.5', margin: '0 0 12px' }}>
+                {sqlHelpMessage}
+              </p>
+              <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', marginBottom: '16px', fontSize: '12px', color: 'var(--text2)' }}>
+                <div><strong>Steps to enable:</strong></div>
+                <ol style={{ margin: '8px 0 0', paddingLeft: '18px', lineHeight: '1.6' }}>
+                  <li>Open your <strong>Supabase Project Dashboard</strong></li>
+                  <li>Navigate to <strong>SQL Editor</strong></li>
+                  <li>Open or paste the contents of <code style={{ color: 'var(--purple)', fontFamily: 'monospace' }}>admin_password_reset.sql</code></li>
+                  <li>Click <strong>Run</strong></li>
+                </ol>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  className="btn bsec"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => {
+                    navigator.clipboard.writeText('admin_password_reset.sql');
+                    setCopiedSql(true);
+                    setTimeout(() => setCopiedSql(false), 2000);
+                  }}
+                >
+                  {copiedSql ? <Check size={14} color="#4ade80" /> : <Copy size={14} />}
+                  <span>{copiedSql ? 'Filename Copied!' : 'Copy Script Name'}</span>
+                </button>
+                <button className="btn bpri" style={{ flex: 1 }} onClick={() => setShowSqlHelpModal(false)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -11,12 +11,15 @@ import {
   FinalInspectionService,
   type BatchFinalInspectionSummary,
 } from '../services/finalInspectionService';
+import { resolveSupervisorName, type SupervisorRecord } from '../utils/supervisorUtils';
 
 interface BatchLogPageProps {
   batchRecords: BatchRecord[];
   products: Product[];
   pendingCrates: Crate[];
   operators: Operator[];
+  supervisors?: SupervisorRecord[];
+  appSettings?: any;
   currentUser?: { id: string; name: string; role: string; };
   onNavigateToFinalInspection?: () => void;
 }
@@ -24,9 +27,36 @@ interface BatchLogPageProps {
 const PAGE_SIZE = 15;
 
 const BatchLogPage: React.FC<BatchLogPageProps> = ({
-  batchRecords, pendingCrates, operators, currentUser, onNavigateToFinalInspection
+  batchRecords, pendingCrates, operators, supervisors, appSettings, currentUser, onNavigateToFinalInspection
 }) => {
   const [allBatches, setAllBatches] = useState<BatchRecord[]>(batchRecords);
+  const [supervisorsList, setSupervisorsList] = useState<SupervisorRecord[]>(supervisors || []);
+
+  useEffect(() => {
+    if (supervisors && supervisors.length > 0) {
+      setSupervisorsList(supervisors);
+      return;
+    }
+    const fetchSupervisors = async () => {
+      try {
+        const { data } = await supabase.from('profiles').select('id, email, full_name, role, employee_code');
+        if (data) {
+          setSupervisorsList(data.map(p => ({
+            id: p.id,
+            email: p.email,
+            fullName: p.full_name,
+            full_name: p.full_name,
+            role: p.role,
+            employeeCode: p.employee_code,
+            employee_code: p.employee_code,
+          })));
+        }
+      } catch (e) {
+        console.warn('Could not load supervisor profiles in BatchLogPage', e);
+      }
+    };
+    fetchSupervisors();
+  }, [supervisors]);
   const [totalDbBatches, setTotalDbBatches] = useState<number | null>(null);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
   const [historyLoaded, setHistoryLoaded] = useState<boolean>(false);
@@ -282,7 +312,9 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
           id: c.id, batchId: c.batch_id, machineId: c.machine_id, binNumber: c.bin_number,
           startTime: c.start_time, endTime: c.end_time, grossQty: c.gross_qty, netQty: c.net_qty,
           rejectedCount: c.rejected_qty || 0, rejectionDetails: c.rejection_details || {},
-          operatorId: c.operator_id, supervisorId: c.supervisor_id,
+          operatorId: c.operator_id, 
+          supervisorId: c.supervisor_id,
+          shiftId: c.shift_id,
           inspectedBy: c.inspected_by,
           inspectedAt: c.inspected_at || (c.status === 'Completed' ? c.end_time : undefined),
           status: c.status
@@ -600,7 +632,20 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                                         </div>
                                         <div className="dt-wrap">
                                           <table className="dt sub-table" style={{ width: '100%', background: 'transparent' }}>
-                                            <thead><tr><th>Bin #</th><th>Net Qty</th><th>Rejections</th><th>Reject %</th><th>Inspector</th><th>Inspected At</th><th>Status</th></tr></thead>
+                                            <thead>
+                                                <tr>
+                                                  <th>Bin #</th>
+                                                  <th>Shift</th>
+                                                  <th>Bin Timestamp</th>
+                                                  <th>Net Qty</th>
+                                                  <th>Rejections</th>
+                                                  <th>Reject %</th>
+                                                  <th>Supervisor</th>
+                                                  <th>Inspector</th>
+                                                  <th>Inspected At</th>
+                                                  <th>Status</th>
+                                                </tr>
+                                              </thead>
                                             <tbody>
                                               {crates.map(crate => {
                                                 const rTotal = (crate.netQty || 0) + (crate.rejectedCount || 0);
@@ -608,12 +653,45 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                                                 return (
                                                   <tr key={crate.id}>
                                                     <td className="mono" style={{ fontWeight: 600 }}>Bin #{crate.binNumber}</td>
+                                                      <td>
+                                                        <span className="pill pg" style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px' }}>
+                                                          Shift {crate.shiftId || 'A'}
+                                                        </span>
+                                                      </td>
+                                                      <td>
+                                                        {crate.endTime || crate.startTime ? (
+                                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                              <Calendar size={11} style={{ color: 'var(--text3)', flexShrink: 0 }} />
+                                                              <span className="mono" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>
+                                                                {formatDateOnly(crate.endTime || crate.startTime)}
+                                                              </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                              <Clock size={11} style={{ color: 'var(--purple)', flexShrink: 0 }} />
+                                                              <span className="mono" style={{ fontSize: '10px', color: 'var(--text2)' }}>
+                                                                {formatTimeOnly(crate.endTime || crate.startTime)}
+                                                              </span>
+                                                            </div>
+                                                          </div>
+                                                        ) : (
+                                                          <span style={{ fontSize: '10.5px', color: 'var(--text3)', fontStyle: 'italic' }}>Pending</span>
+                                                        )}
+                                                      </td>
                                                     <td className="mono">{crate.netQty?.toLocaleString()} <span style={{ fontSize: '12px', color: 'var(--text3)' }}>pcs</span></td>
                                                     <td className="mono" style={{ color: crate.rejectedCount ? 'var(--red)' : 'inherit' }}>{crate.rejectedCount || 0}</td>
                                                     <td>
                                                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                         <div className="pbg" style={{ width: '60px', height: '4px', margin: 0 }}><div className="pf r" style={{ width: `${Math.min(100, rRate * 5)}%`, background: rRate > 5 ? 'var(--red)' : (rRate > 2 ? 'var(--amber)' : 'var(--green)') }} /></div>
                                                         <span className="mono" style={{ fontSize: '11px', fontWeight: 600, color: rRate > 5 ? 'var(--red)' : (rRate > 2 ? 'var(--amber)' : 'var(--text3)') }}>{rRate.toFixed(1)}%</span>
+                                                      </div>
+                                                    </td>
+                                                    <td>
+                                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <UserCheck size={12} style={{ color: 'var(--purple)' }} />
+                                                        <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>
+                                                          {resolveSupervisorName(crate.supervisorId, supervisorsList, appSettings?.activeSupervisorName) || 'N/A'}
+                                                        </span>
                                                       </div>
                                                     </td>
                                                     <td>
