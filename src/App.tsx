@@ -1657,6 +1657,8 @@ const App: React.FC = () => {
             products={products} 
             pendingCrates={pendingCrates} 
             operators={operators}
+            machines={machines}
+            shiftSettings={shiftSettings}
             appSettings={appSettings}
             currentUser={{
               id: session?.user?.id || '',

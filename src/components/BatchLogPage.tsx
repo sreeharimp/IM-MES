@@ -3,15 +3,16 @@ import {
   Search, Filter, Factory, AlertCircle, CheckCircle2,
   ChevronDown, ChevronRight, UserCheck, Package, Layers,
   ShieldCheck, ShieldAlert, AlertOctagon, QrCode, ChevronLeft,
-  Calendar, FlaskConical, Database, RefreshCw, Clock
+  Calendar, FlaskConical, Database, RefreshCw, Clock, PlusCircle
 } from 'lucide-react';
-import type { BatchRecord, Product, Crate, Operator } from '../types';
+import type { BatchRecord, Product, Crate, Operator, Machine, ShiftSetting } from '../types';
 import { supabase } from '../lib/supabase';
 import {
   FinalInspectionService,
   type BatchFinalInspectionSummary,
 } from '../services/finalInspectionService';
 import { resolveSupervisorName, type SupervisorRecord } from '../utils/supervisorUtils';
+import { LogMissedProductionModal } from './LogMissedProductionModal';
 
 interface BatchLogPageProps {
   batchRecords: BatchRecord[];
@@ -19,18 +20,52 @@ interface BatchLogPageProps {
   pendingCrates: Crate[];
   operators: Operator[];
   supervisors?: SupervisorRecord[];
+  machines?: Machine[];
+  shiftSettings?: ShiftSetting[];
   appSettings?: any;
   currentUser?: { id: string; name: string; role: string; };
   onNavigateToFinalInspection?: () => void;
+  onRefreshData?: () => void;
 }
 
 const PAGE_SIZE = 15;
 
 const BatchLogPage: React.FC<BatchLogPageProps> = ({
-  batchRecords, pendingCrates, operators, supervisors, appSettings, currentUser, onNavigateToFinalInspection
+  batchRecords, pendingCrates, operators, supervisors, machines, shiftSettings, appSettings, currentUser, onNavigateToFinalInspection, onRefreshData
 }) => {
   const [allBatches, setAllBatches] = useState<BatchRecord[]>(batchRecords);
   const [supervisorsList, setSupervisorsList] = useState<SupervisorRecord[]>(supervisors || []);
+  const [showMissedProductionModal, setShowMissedProductionModal] = useState(false);
+  const [machinesList, setMachinesList] = useState<Machine[]>(machines || []);
+
+  useEffect(() => {
+    if (machines && machines.length > 0) {
+      setMachinesList(machines);
+      return;
+    }
+    supabase.from('machines').select('*').order('id').then(({ data }) => {
+      if (data) {
+        setMachinesList(data.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          model: m.model,
+          currentMouldId: m.current_mould_id,
+          currentOperatorId: m.current_operator_id,
+          activeProductId: m.active_product_id,
+          currentMaterialId: m.current_material_id,
+          materialGrade: m.material_grade,
+          materialBatch: m.material_batch,
+          currentBinNumber: m.current_bin_number || 1,
+          currentShiftProduction: m.current_shift_production || 0,
+          currentDayProduction: m.current_day_production || 0,
+          status: m.status,
+          binTarget: m.bin_target,
+          lastCleaningDone: m.last_cleaning_done,
+          faiApproved: m.fai_approved
+        })));
+      }
+    });
+  }, [machines]);
 
   useEffect(() => {
     if (supervisors && supervisors.length > 0) {
@@ -440,9 +475,27 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                 </div>
               )}
             </div>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
-              <input type="text" placeholder="Search Batch, Product, RM..." className="fi" style={{ width: '220px', paddingLeft: '32px', height: '32px', fontSize: '12px' }} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                className="btn bpri bsm"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  height: '32px',
+                  padding: '0 12px'
+                }}
+                onClick={() => setShowMissedProductionModal(true)}
+                title="Log production runs or bins produced during POS or network lockout"
+              >
+                <PlusCircle size={14} /> Log Missed Bins
+              </button>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
+                <input type="text" placeholder="Search Batch, Product, RM..." className="fi" style={{ width: '220px', paddingLeft: '32px', height: '32px', fontSize: '12px' }} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              </div>
             </div>
           </div>
 
@@ -857,6 +910,22 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
         .sub-table td { padding: 10px 12px !important; font-size: 11px !important; border-bottom: 1px solid rgba(255,255,255,0.02) !important; }
         .active-row { background: rgba(167, 139, 250, 0.05) !important; }
       `}</style>
+
+      {showMissedProductionModal && (
+        <LogMissedProductionModal
+          machines={machinesList}
+          products={products}
+          operators={operators}
+          supervisors={supervisorsList}
+          shiftSettings={shiftSettings}
+          defaultSupervisorName={appSettings?.activeSupervisorName}
+          onClose={() => setShowMissedProductionModal(false)}
+          onSuccess={async () => {
+            await loadFullHistory();
+            if (onRefreshData) onRefreshData();
+          }}
+        />
+      )}
     </div>
   );
 };
