@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   X, Plus, Trash2, Calendar, Clock, Factory, User, ShieldCheck, 
-  Layers, Package, AlertTriangle, CheckCircle2, ChevronRight, Hash 
+  Layers, Package, AlertTriangle, CheckCircle2 
 } from 'lucide-react';
 import type { Machine, Product, Operator, ShiftSetting, BatchRecord } from '../types';
 import { supabase } from '../lib/supabase';
@@ -9,9 +9,9 @@ import { formatUnitId, genBatchId } from '../utils/batchUtils';
 import type { SupervisorRecord } from '../utils/supervisorUtils';
 
 interface LogMissedProductionModalProps {
-  machines: Machine[];
-  products: Product[];
-  operators: Operator[];
+  machines?: Machine[];
+  products?: Product[];
+  operators?: Operator[];
   supervisors?: SupervisorRecord[];
   shiftSettings?: ShiftSetting[];
   defaultSupervisorName?: string;
@@ -28,9 +28,9 @@ interface BinDraft {
 }
 
 export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> = ({
-  machines,
-  products,
-  operators,
+  machines = [],
+  products = [],
+  operators = [],
   supervisors = [],
   shiftSettings = [],
   defaultSupervisorName,
@@ -49,7 +49,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
   const [selectedShift, setSelectedShift] = useState<string>('C');
   const [selectedMachineId, setSelectedMachineId] = useState<string>(machines[0]?.id || 'IMM-A');
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>(operators[0]?.id || '');
-  const [selectedSupervisor, setSelectedSupervisor] = useState<string>(defaultSupervisorName || '');
+  const [selectedSupervisor, setSelectedSupervisor] = useState<string>(defaultSupervisorName || 'Nidhin Chandran');
 
   // Batch auto-discovery states
   const [isLoadingBatch, setIsLoadingBatch] = useState(false);
@@ -75,6 +75,23 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{ count: number; batchId: string; totalUnits: number } | null>(null);
 
+  // Helper to generate drafts
+  const generateDrafts = useCallback((startBin: number, count: number, defaultQty: number) => {
+    const drafts: BinDraft[] = [];
+    const validCount = Math.max(1, count);
+    for (let i = 0; i < validCount; i++) {
+      const bNum = startBin + i;
+      drafts.push({
+        binNumber: bNum,
+        grossQty: defaultQty,
+        startupScrap: 0,
+        qcSample: 0,
+        netQty: defaultQty
+      });
+    }
+    setBinDrafts(drafts);
+  }, []);
+
   // Auto-detect supervisor if not set
   useEffect(() => {
     if (!selectedSupervisor && supervisors.length > 0) {
@@ -97,15 +114,16 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
     const lookupBatch = async () => {
       try {
         // 1. Check for batch record on this machine & date
-        const { data: batchData } = await supabase
+        const { data: batchList } = await supabase
           .from('batch_records')
           .select('*')
           .eq('machine_id', selectedMachineId)
           .eq('batch_date', productionDate)
-          .maybeSingle();
+          .order('start_time', { ascending: false });
 
         if (!isMounted) return;
 
+        const batchData = batchList && batchList.length > 0 ? batchList[0] : null;
         let batchIdToQueryCrates: string | null = null;
 
         if (batchData) {
@@ -129,16 +147,16 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
           setExistingBatch(rec);
           batchIdToQueryCrates = batchData.id;
 
-          const prod = products.find(p => p.id === batchData.product_id);
+          const prod = (products || []).find(p => p.id === batchData.product_id);
           if (prod?.binQty) setStandardBinQty(prod.binQty);
         } else {
           // If no batch found, pre-select machine's current active product as fallback
-          const mach = machines.find(m => m.id === selectedMachineId);
+          const mach = (machines || []).find(m => m.id === selectedMachineId);
           if (mach?.activeProductId) {
             setFallbackProductId(mach.activeProductId);
             setFallbackMouldId(mach.currentMouldId || '');
             setFallbackMaterialBatch(mach.materialBatch || '');
-            const prod = products.find(p => p.id === mach.activeProductId);
+            const prod = (products || []).find(p => p.id === mach.activeProductId);
             if (prod?.binQty) setStandardBinQty(prod.binQty);
           }
         }
@@ -174,24 +192,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
     lookupBatch();
 
     return () => { isMounted = false; };
-  }, [selectedMachineId, productionDate, machines, products]);
-
-  // Helper to generate drafts
-  const generateDrafts = (startBin: number, count: number, defaultQty: number) => {
-    const drafts: BinDraft[] = [];
-    const validCount = Math.max(1, count);
-    for (let i = 0; i < validCount; i++) {
-      const bNum = startBin + i;
-      drafts.push({
-        binNumber: bNum,
-        grossQty: defaultQty,
-        startupScrap: 0,
-        qcSample: 0,
-        netQty: defaultQty
-      });
-    }
-    setBinDrafts(drafts);
-  };
+  }, [selectedMachineId, productionDate, machines, products, generateDrafts, numBinsToLog, standardBinQty]);
 
   // Re-generate drafts when parameters change
   const handleRegenerateDrafts = (start: number, count: number, qty: number) => {
@@ -276,8 +277,8 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
     }
 
     const prod = existingBatch
-      ? products.find(p => p.id === existingBatch.productId)
-      : products.find(p => p.id === fallbackProductId);
+      ? (products || []).find(p => p.id === existingBatch.productId)
+      : (products || []).find(p => p.id === fallbackProductId);
 
     if (!prod && !existingBatch) {
       setErrorMessage('Please select the product that was running on this machine.');
@@ -289,7 +290,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
     try {
       let batchId = existingBatch?.id;
       const targetDate = productionDate;
-      const mach = machines.find(m => m.id === selectedMachineId);
+      const mach = (machines || []).find(m => m.id === selectedMachineId);
 
       // 1. If batch doesn't exist yet for this date, create it
       if (!batchId) {
@@ -445,7 +446,6 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
                   className="btn bsec" 
                   onClick={() => {
                     setSuccessInfo(null);
-                    // Increment starting bin for next batch of entry
                     const nextStart = startBinNumber + successInfo.count;
                     handleRegenerateDrafts(nextStart, numBinsToLog, standardBinQty);
                   }}
@@ -469,7 +469,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
                 </div>
               )}
 
-              {/* 1. Context Row: Date, Shift, Machine, Operator */}
+              {/* 1. Context Row: Date, Shift, Machine, Operator, Supervisor */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
                 <div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text3)', marginBottom: '6px', fontWeight: 600 }}>
@@ -510,7 +510,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
                     value={selectedMachineId} 
                     onChange={e => setSelectedMachineId(e.target.value)}
                   >
-                    {machines.map(m => (
+                    {(machines || []).map(m => (
                       <option key={m.id} value={m.id}>
                         {m.id} - {m.name}
                       </option>
@@ -529,7 +529,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
                     onChange={e => setSelectedOperatorId(e.target.value)}
                   >
                     <option value="">-- Select Operator --</option>
-                    {operators.map(op => (
+                    {(operators || []).map(op => (
                       <option key={op.id} value={op.id}>
                         {op.name} {op.employeeId ? `(${op.employeeId})` : ''}
                       </option>
@@ -547,8 +547,8 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
                     value={selectedSupervisor} 
                     onChange={e => setSelectedSupervisor(e.target.value)}
                   >
-                    {supervisors.map(s => (
-                      <option key={s.id || s.email} value={s.fullName || s.full_name || s.email}>
+                    {(supervisors || []).map((s, idx) => (
+                      <option key={s.id || s.email || idx} value={s.fullName || s.full_name || s.email}>
                         {s.fullName || s.full_name} ({s.role || 'Supervisor'})
                       </option>
                     ))}
@@ -595,13 +595,13 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
                       value={fallbackProductId}
                       onChange={e => {
                         setFallbackProductId(e.target.value);
-                        const p = products.find(prod => prod.id === e.target.value);
+                        const p = (products || []).find(prod => prod.id === e.target.value);
                         if (p?.binQty) setStandardBinQty(p.binQty);
                         if (p?.mouldId) setFallbackMouldId(p.mouldId);
                       }}
                     >
                       <option value="">-- Select Product --</option>
-                      {products.map(p => (
+                      {(products || []).map(p => (
                         <option key={p.id} value={p.id}>{p.name} ({p.itemCode})</option>
                       ))}
                     </select>

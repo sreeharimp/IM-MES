@@ -4,6 +4,7 @@ import type { Machine, Operator, Mould, Product, RawMaterial, ProductMaterial, S
 import { supabase } from '../lib/supabase';
 import { logSystemChange } from '../utils/systemChanges';
 import { ProductionPlannerModule } from './planner/ProductionPlannerModule';
+import { LogMissedProductionModal } from './LogMissedProductionModal';
 
 interface AdminDashboardProps {
   machines: Machine[];
@@ -77,6 +78,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [showSqlHelpModal, setShowSqlHelpModal] = useState(false);
   const [sqlHelpMessage, setSqlHelpMessage] = useState('');
   const [copiedSql, setCopiedSql] = useState(false);
+  const [showMissedProductionModal, setShowMissedProductionModal] = useState(false);
 
   const [newSupervisor, setNewSupervisor] = useState({ email: '', fullName: '', employeeCode: '' });
   const [newOperator, setNewOperator] = useState({ name: '', employeeId: '' });
@@ -1698,6 +1700,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             )}
+
+            {currentUserRole === 'Admin' && (
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', background: 'rgba(59, 130, 246, 0.03)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.15)' }}>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={14} style={{ color: 'var(--blue)' }} /> Missed Shift / Backdated Production Entry
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+                    Need to log bins that were produced during a POS lockout, offline shift, or network downtime?
+                  </div>
+                </div>
+                <button
+                  className="btn bpri"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}
+                  onClick={() => setShowMissedProductionModal(true)}
+                >
+                  <Plus size={14} /> Log Missed Production
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2376,6 +2398,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {showMissedProductionModal && currentUserRole === 'Admin' && (
+        <LogMissedProductionModal
+          machines={machines}
+          products={products}
+          operators={operators}
+          supervisors={profiles.filter(p => p.role === 'Supervisor' || p.role === 'Admin').map(p => ({
+            id: p.id,
+            email: p.email,
+            full_name: p.full_name,
+            fullName: p.full_name,
+            role: p.role,
+            employee_code: p.employee_code
+          }))}
+          shiftSettings={shiftSettings}
+          defaultSupervisorName={_appSettings?.activeSupervisorName}
+          onClose={() => setShowMissedProductionModal(false)}
+          onSuccess={() => {
+            showSuccess('Missed production bins successfully logged!');
+          }}
+        />
       )}
     </div>
   );

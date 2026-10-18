@@ -31,12 +31,33 @@ interface BatchLogPageProps {
 const PAGE_SIZE = 15;
 
 const BatchLogPage: React.FC<BatchLogPageProps> = ({
-  batchRecords, pendingCrates, operators, supervisors, machines, shiftSettings, appSettings, currentUser, onNavigateToFinalInspection, onRefreshData
+  batchRecords, products, pendingCrates, operators, supervisors, machines, shiftSettings, appSettings, currentUser, onNavigateToFinalInspection, onRefreshData
 }) => {
   const [allBatches, setAllBatches] = useState<BatchRecord[]>(batchRecords);
   const [supervisorsList, setSupervisorsList] = useState<SupervisorRecord[]>(supervisors || []);
   const [showMissedProductionModal, setShowMissedProductionModal] = useState(false);
   const [machinesList, setMachinesList] = useState<Machine[]>(machines || []);
+  const [productsList, setProductsList] = useState<Product[]>(products || []);
+
+  useEffect(() => {
+    if (products && products.length > 0) {
+      setProductsList(products);
+      return;
+    }
+    supabase.from('products').select('*').then(({ data }) => {
+      if (data) {
+        setProductsList(data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          mouldId: p.mould_id,
+          itemCode: p.item_code,
+          batchIdentifier: p.batch_identifier,
+          binQty: p.bin_qty,
+          stdPackSize: p.std_pack_size
+        })));
+      }
+    });
+  }, [products]);
 
   useEffect(() => {
     if (machines && machines.length > 0) {
@@ -476,22 +497,24 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                className="btn bpri bsm"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  height: '32px',
-                  padding: '0 12px'
-                }}
-                onClick={() => setShowMissedProductionModal(true)}
-                title="Log production runs or bins produced during POS or network lockout"
-              >
-                <PlusCircle size={14} /> Log Missed Bins
-              </button>
+              {currentUser?.role === 'Admin' && (
+                <button
+                  className="btn bpri bsm"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    height: '32px',
+                    padding: '0 12px'
+                  }}
+                  onClick={() => setShowMissedProductionModal(true)}
+                  title="Log production runs or bins produced during POS or network lockout (Admin only)"
+                >
+                  <PlusCircle size={14} /> Log Missed Bins
+                </button>
+              )}
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
                 <input type="text" placeholder="Search Batch, Product, RM..." className="fi" style={{ width: '220px', paddingLeft: '32px', height: '32px', fontSize: '12px' }} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -911,10 +934,10 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
         .active-row { background: rgba(167, 139, 250, 0.05) !important; }
       `}</style>
 
-      {showMissedProductionModal && (
+      {showMissedProductionModal && currentUser?.role === 'Admin' && (
         <LogMissedProductionModal
           machines={machinesList}
-          products={products}
+          products={productsList}
           operators={operators}
           supervisors={supervisorsList}
           shiftSettings={shiftSettings}
