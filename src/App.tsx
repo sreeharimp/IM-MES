@@ -992,6 +992,11 @@ const App: React.FC = () => {
       return t as Tab;
     });
 
+    // Safeguard: Ensure QC role always has Final Inspection accessible
+    if (role === 'QC' && !mappedPerms.includes('Final Inspection')) {
+      mappedPerms.push('Final Inspection');
+    }
+
     const basePermissions: Tab[] = Array.from(new Set(mappedPerms));
     return basePermissions;
   }, [profile?.role, appSettings?.role_permissions, appSettings?.printLabels]);

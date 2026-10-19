@@ -259,16 +259,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onUpdateAppSettings((prev: any) => ({
           ...prev,
           role_permissions: rolePermissions,
+          print_labels: { ...(prev?.print_labels || {}), role_permissions: rolePermissions }
         }));
       }
 
-      const { error } = await supabase.from('app_settings').upsert({
-        id: 'global',
-        role_permissions: rolePermissions,
-      });
+      const currentPrintLabels = _appSettings?.printLabels || _appSettings?.print_labels || {};
+      const updatedPrintLabels = {
+        ...currentPrintLabels,
+        role_permissions: rolePermissions
+      };
+
+      const { error } = await supabase.from('app_settings').update({
+        print_labels: updatedPrintLabels
+      }).eq('id', 'global');
 
       if (error) {
-        console.warn('Persist to app_settings DB warning (column or RLS):', error.message);
+        console.warn('Persist to app_settings DB warning:', error.message);
       }
 
       logSystemChange({
