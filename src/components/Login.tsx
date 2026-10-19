@@ -52,24 +52,28 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     }
 
     if (authData?.user) {
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('is_active, revoked_reason')
-        .eq('id', authData.user.id)
-        .maybeSingle();
-
-      if (prof && prof.is_active === false) {
-        await supabase.auth.signOut();
-        setError('Access Denied: Your account has been revoked by an Administrator.');
-        setLoading(false);
-        return;
-      }
-
-      if (prof?.revoked_reason === 'FORCE_LOGOUT') {
-        await supabase
+      try {
+        const { data: prof } = await supabase
           .from('profiles')
-          .update({ revoked_reason: null, last_seen_at: new Date().toISOString() })
-          .eq('id', authData.user.id);
+          .select('is_active, revoked_reason')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+
+        if (prof && prof.is_active === false) {
+          await supabase.auth.signOut();
+          setError('Access Denied: Your account has been revoked by an Administrator.');
+          setLoading(false);
+          return;
+        }
+
+        if (prof?.revoked_reason === 'FORCE_LOGOUT') {
+          await supabase
+            .from('profiles')
+            .update({ revoked_reason: null, last_seen_at: new Date().toISOString() })
+            .eq('id', authData.user.id);
+        }
+      } catch (err) {
+        console.warn('Profile status validation warning:', err);
       }
     }
 

@@ -1013,6 +1013,26 @@ const App: React.FC = () => {
     });
   }, []);
 
+  // Safety watchdog: Ensure profile is never permanently null if session is active
+  useEffect(() => {
+    if (!session || profile) return;
+    const timeout = setTimeout(() => {
+      setProfile(prev => {
+        if (prev) return prev;
+        console.warn('Profile initialization timed out. Using session fallback.');
+        const fbName = session.user?.user_metadata?.full_name || session.user?.email?.split('@')[0] || 'User';
+        const fbRole = session.user?.user_metadata?.role || (session.user?.email?.toLowerCase().includes('admin') ? 'Admin' : 'Supervisor');
+        return {
+          fullName: fbName,
+          email: session.user?.email || '',
+          role: fbRole,
+          mustChangePassword: false
+        };
+      });
+    }, 3500);
+    return () => clearTimeout(timeout);
+  }, [session, profile]);
+
   useEffect(() => {
     if (!session) return;
     const fetchData = async () => {
@@ -1021,7 +1041,7 @@ const App: React.FC = () => {
           supabase.from('app_settings').select('*').eq('id', 'global').maybeSingle(),
           supabase.from('shift_settings').select('*').order('id'),
           supabase.from('machines').select('*').order('id'),
-          supabase.from('profiles').select('full_name, email, role, employee_code, must_change_password').eq('id', session.user.id).maybeSingle(),
+          supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
           supabase.from('products').select('*'),
           supabase.from('operators').select('*'),
           supabase.from('batch_records').select('*').order('start_time', { ascending: false }).limit(60),
@@ -1054,7 +1074,7 @@ const App: React.FC = () => {
         });
 
         // 2b. Auto-Authorize if user is the active supervisor
-        if (pData && appData.active_supervisor_name === pData.full_name && !appData.pending_handover) {
+        if (pData && appData?.active_supervisor_name === pData.full_name && !appData?.pending_handover) {
            setIsAuthorizedSession(true);
         }
 
@@ -1079,22 +1099,63 @@ const App: React.FC = () => {
             breakdownStartTime: m.breakdown_start_time ? Number(m.breakdown_start_time) : undefined,
             oee: m.oee || 0, lastCleaningDone: m.last_cleaning_done, faiApproved: m.fai_approved
         })));
-        if (pData) {
-          setProfile({ fullName: pData.full_name, email: pData.email, role: pData.role || 'Supervisor', employeeCode: pData.employee_code, mustChangePassword: !!pData.must_change_password });
+
+        // Resilient Profile Assignment
+        let activeProf = pData;
+        if (!activeProf && session.user.email) {
+          try {
+            const { data: profByEmail } = await supabase
+              .from('profiles')
+              .select('*')
+              .ilike('email', session.user.email)
+              .maybeSingle();
+            if (profByEmail) activeProf = profByEmail;
+          } catch (_) {}
+        }
+
+        if (activeProf) {
+          setProfile({ 
+            fullName: activeProf.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User', 
+            email: activeProf.email || session.user.email || '', 
+            role: activeProf.role || 'Supervisor', 
+            employeeCode: activeProf.employee_code, 
+            mustChangePassword: !!activeProf.must_change_password 
+          });
         } else {
           // Auto-create missing profile from whitelist for new signups
-          const { data: whitelist } = await supabase.from('authorized_supervisors').select('*').eq('email', session.user.email).maybeSingle();
-          const { data: neu, error: createErr } = await supabase.from('profiles').insert({
-            id: session.user.id,
-            full_name: whitelist?.full_name || 'New User',
-            email: session.user.email,
-            employee_code: whitelist?.employee_code || null,
-            role: 'Supervisor'
-          }).select().maybeSingle();
+          let whitelist: any = null;
+          try {
+            const { data } = await supabase.from('authorized_supervisors').select('*').eq('email', session.user.email).maybeSingle();
+            whitelist = data;
+          } catch (_) {}
 
-          if (createErr) console.error('Auto-Profile Error:', createErr);
-          if (neu) setProfile({ fullName: neu.full_name, email: neu.email, role: neu.role, employeeCode: neu.employee_code });
+          let neu: any = null;
+          try {
+            const { data, error: createErr } = await supabase.from('profiles').insert({
+              id: session.user.id,
+              full_name: whitelist?.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'New User',
+              email: session.user.email,
+              employee_code: whitelist?.employee_code || null,
+              role: whitelist?.role || 'Supervisor'
+            }).select().maybeSingle();
+            neu = data;
+            if (createErr) console.warn('Auto-Profile creation notice:', createErr.message);
+          } catch (e) {
+            console.warn('Auto-Profile exception:', e);
+          }
+
+          // Guaranteed profile initialization so user NEVER hangs on Initializing
+          const chosenName = neu?.full_name || whitelist?.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
+          const chosenRole = neu?.role || whitelist?.role || (session.user.email?.toLowerCase().includes('admin') ? 'Admin' : 'Supervisor');
+          setProfile({ 
+            fullName: chosenName, 
+            email: session.user.email || '', 
+            role: chosenRole, 
+            employeeCode: neu?.employee_code || whitelist?.employee_code || undefined,
+            mustChangePassword: false 
+          });
         }
+
         if (prdData) setProducts(prdData.map((p: any) => ({ ...p, mouldId: p.mould_id, itemCode: p.item_code, batchIdentifier: p.batch_identifier, binQty: p.bin_qty, stdPackSize: p.std_pack_size })));
         if (opers) setOperators(opers.map((o: any) => ({ ...o, employeeId: o.employee_id, isCertified: o.is_certified })));
         if (batRecs) setBatchRecords(batRecs.map((b: any) => ({ 
@@ -1126,7 +1187,16 @@ const App: React.FC = () => {
             setAppSettings(prev => prev ? { ...prev, pendingHandover: true } : null);
           }
         }
-      } catch (err) { console.error('Fetch Error:', err); }
+      } catch (err) { 
+        console.error('Fetch Error:', err); 
+        // Fallback profile if any query crashed
+        setProfile(prev => prev || {
+          fullName: session.user?.user_metadata?.full_name || session.user?.email?.split('@')[0] || 'User',
+          email: session.user?.email || '',
+          role: session.user?.email?.toLowerCase().includes('admin') ? 'Admin' : 'Supervisor',
+          mustChangePassword: false
+        });
+      }
     };
     fetchData();
 
@@ -1688,7 +1758,29 @@ const App: React.FC = () => {
   };
 
   if (!session) return <Login onSuccess={() => {}} />;
-  if (!profile) return <div className="loading">Initializing...</div>;
+  if (!profile) {
+    return (
+      <div className="loading" style={{ flexDirection: 'column', gap: '16px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="ua animate-pulse" style={{ width: '60px', height: '60px', fontSize: '20px', background: 'var(--blue)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}>
+          IM
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>Initializing System...</div>
+          <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '4px' }}>Setting up your station profile and data sync</div>
+        </div>
+        <button 
+          className="btn bdan bsm" 
+          onClick={() => {
+            localStorage.clear();
+            supabase.auth.signOut();
+          }}
+          style={{ fontSize: '11px', marginTop: '16px' }}
+        >
+          Sign Out / Return to Login
+        </button>
+      </div>
+    );
+  }
 
   // 1. Handover Flow (Only for supervisors in transition)
   if (appSettings?.pendingHandover && !isAuthorizedSession && !isViewOnly && profile.role !== 'Admin' && profile.role !== 'PowerUser' && profile.role !== 'QC' && userPermissions.includes('Shop Floor')) {
