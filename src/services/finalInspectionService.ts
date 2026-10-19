@@ -645,13 +645,23 @@ export class FinalInspectionService {
         })
         .in('qr_payload', packetIds);
 
-      // Update packets
-      await supabase
-        .from('packets')
-        .update({
-          status: 'Final Inspected'
-        })
-        .in('id', packetIds);
+      // Update packets: Mark as Final Inspected and place into WIP Store stock
+      if (status === 'PASSED') {
+        await supabase
+          .from('packets')
+          .update({
+            status: 'Final Inspected',
+            location_status: 'WIP Store'
+          })
+          .in('id', packetIds);
+      } else {
+        await supabase
+          .from('packets')
+          .update({
+            status: status === 'REJECTED' ? 'Rejected' : 'Packed'
+          })
+          .in('id', packetIds);
+      }
     } catch (writeErr) {
       console.warn('[FinalInspectionService] Remote table write fallback to local storage:', writeErr);
     }
@@ -743,14 +753,14 @@ export class FinalInspectionService {
       console.warn('[FinalInspectionService] Remote table fetch skipped:', e);
     }
 
-    // Source 3: system_changes sync records
+    // Source 3: system_changes sync records (comprehensive inspection history across all devices)
     try {
       const { data: changes, error: changeErr } = await supabase
         .from('system_changes')
         .select('*')
         .eq('module', 'FINAL_INSPECTION')
         .order('changed_at', { ascending: false })
-        .limit(60);
+        .limit(1000);
 
       if (!changeErr && changes && changes.length > 0) {
         for (const ch of changes) {
@@ -794,7 +804,7 @@ export class FinalInspectionService {
         .from('production_plan_labels')
         .select('id, qr_payload, expected_quantity, status, scanned_at, scanned_by, void_reason, production_plans(batch_code, product_id, products(name))')
         .eq('status', 'inspected')
-        .limit(300);
+        .limit(2000);
 
       if (labels && labels.length > 0) {
         for (const l of labels as any[]) {
@@ -814,6 +824,36 @@ export class FinalInspectionService {
               status: 'PASSED',
               defect_notes: l.void_reason,
               inspected_at: l.scanned_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+    } catch {}
+
+    // Source 5: packets table where status='Final Inspected' or location_status in WIP/FG Store
+    try {
+      const { data: packets } = await supabase
+        .from('packets')
+        .select('id, batch_id, product_id, product_name, quantity, status, location_status, packed_at')
+        .or('status.eq.Final Inspected,location_status.eq.WIP Store,location_status.eq.FG Store')
+        .limit(2000);
+
+      if (packets && packets.length > 0) {
+        for (const p of packets) {
+          if (p.id && !recordsMap.has(p.id)) {
+            recordsMap.set(p.id, {
+              id: p.id,
+              session_id: 'FIS-PACKET-RECORD',
+              packet_id: p.id,
+              product_id: p.product_id,
+              product_name: p.product_name,
+              batch_code: p.batch_id,
+              quantity: p.quantity || 1000,
+              inspector_id: 'qc-verified',
+              inspector_name: 'QC Verified',
+              inspector_role: 'QC',
+              status: 'PASSED',
+              inspected_at: p.packed_at || new Date().toISOString()
             });
           }
         }

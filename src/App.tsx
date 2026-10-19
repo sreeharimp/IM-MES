@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LogOut, Wrench, Factory, History, Cpu, Menu, 
   ChevronLeft, ChevronRight, ScrollText, CheckCircle2, 
-  Play, UserPlus, ClipboardList, Square, AlertCircle, Info, Pencil, X, ShieldCheck, Boxes, LayoutDashboard, CalendarDays, Key
+  Play, UserPlus, ClipboardList, Square, AlertCircle, Info, Pencil, X, ShieldCheck, Boxes, LayoutDashboard, CalendarDays, Key, Warehouse
 } from 'lucide-react';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import type { Machine, MachineStatus, Operator, Product, Mould, RawMaterial, ProductMaterial, Crate, BatchRecord, ShiftSetting, AppSettings, DefectType, BreakdownReason, CleaningTask, Tab } from './types';
@@ -27,6 +27,7 @@ import InspectionPage from './components/InspectionPage';
 import BreakdownLogPage from './components/BreakdownLogPage';
 import BatchLogPage from './components/BatchLogPage';
 import PackingPage from './components/PackingPage';
+import InventoryPage from './components/InventoryPage';
 import LiveDashboardPage from './components/LiveDashboardPage';
 import { ProductionPlannerModule } from './components/planner/ProductionPlannerModule';
 import AboutPage from './components/AboutPage';
@@ -1011,7 +1012,7 @@ const App: React.FC = () => {
     const role = profile?.role || 'Supervisor';
     const emailLower = (profile?.email || session?.user?.email || '').toLowerCase();
     if (role === 'Admin' || emailLower === 'sreehari@agneypolysoft.com' || emailLower.includes('admin')) {
-      return ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'];
+      return ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Packing', 'Inventory', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'];
     }
 
     const permissionsMap = appSettings?.role_permissions || appSettings?.printLabels?.role_permissions || DEFAULT_ROLE_PERMISSIONS;
@@ -1028,6 +1029,11 @@ const App: React.FC = () => {
     // Safeguard: Ensure QC role always has Final Inspection accessible
     if (role === 'QC' && !mappedPerms.includes('Final Inspection')) {
       mappedPerms.push('Final Inspection');
+    }
+
+    // Safeguard: Ensure Admin, Supervisor, Stores, and QC roles have Inventory accessible
+    if (['Admin', 'Supervisor', 'PowerUser', 'Stores', 'Store', 'QC'].includes(role) && !mappedPerms.includes('Inventory')) {
+      mappedPerms.push('Inventory');
     }
 
     const basePermissions: Tab[] = Array.from(new Set(mappedPerms));
@@ -1815,6 +1821,19 @@ const App: React.FC = () => {
           />
         );
       case 'Packing': return <PackingPage machines={machines} products={products} batchRecords={batchRecords} operators={operators} appSettings={appSettings} supervisorName={profile?.fullName || ''} />;
+      case 'Inventory':
+        return (
+          <InventoryPage
+            products={products}
+            batchRecords={batchRecords}
+            appSettings={appSettings}
+            currentUser={{
+              id: session?.user?.id || '',
+              name: profile?.fullName || 'Store Team',
+              role: profile?.role || 'Supervisor'
+            }}
+          />
+        );
       case 'Machines': 
         if (!userPermissions.includes('Machines') && !isAdminRole) {
           setActiveTab(userPermissions[0] || 'Shop Floor');
@@ -2080,6 +2099,9 @@ const App: React.FC = () => {
             {userPermissions.includes('Packing') && (
               <NavItem icon={<Boxes size={16}/>} label="Packing App" active={activeTab==='Packing'} onClick={()=>{setActiveTab('Packing'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
+            {userPermissions.includes('Inventory') && (
+              <NavItem icon={<Warehouse size={16}/>} label="Inventory & Store" active={activeTab==='Inventory'} onClick={()=>{setActiveTab('Inventory'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
+            )}
             {userPermissions.includes('Batch Log') && (
               <NavItem icon={<History size={16}/>} label="Batch Log" active={activeTab==='Batch Log'} onClick={()=>{setActiveTab('Batch Log'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
@@ -2219,6 +2241,12 @@ const App: React.FC = () => {
           <div className={`bn-item ${activeTab === 'Packing' ? 'active' : ''}`} onClick={() => setActiveTab('Packing')}>
             <Boxes size={20} />
             <span>Packing</span>
+          </div>
+        )}
+        {userPermissions.includes('Inventory') && (
+          <div className={`bn-item ${activeTab === 'Inventory' ? 'active' : ''}`} onClick={() => setActiveTab('Inventory')}>
+            <Warehouse size={20} />
+            <span>Inventory</span>
           </div>
         )}
         {userPermissions.includes('Batch Log') && (

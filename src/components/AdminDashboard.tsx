@@ -169,12 +169,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const DEFAULT_USER_TYPES = ['Admin', 'PowerUser', 'Supervisor', 'QC', 'Planner', 'Stores', 'Operator'];
 
   const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-    Admin: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
-    PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'About'],
-    Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'About'],
-    QC: ['Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'About'],
+    Admin: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Inventory', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'],
+    PowerUser: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Inventory', 'Batch Log', 'Shift Log', 'Breakdowns', 'About'],
+    Supervisor: ['Live Dashboard', 'Shop Floor', 'Planning & Labels', 'Inspections', 'Final Inspection', 'Packing', 'Inventory', 'Batch Log', 'Shift Log', 'Breakdowns', 'About'],
+    QC: ['Inspections', 'Final Inspection', 'Packing', 'Inventory', 'Batch Log', 'Shift Log', 'About'],
     Planner: ['Planning & Labels', 'Batch Log', 'Shift Log', 'About'],
-    Stores: ['Planning & Labels', 'Packing', 'About'],
+    Stores: ['Inventory', 'Planning & Labels', 'Packing', 'About'],
     Operator: ['Shop Floor', 'About'],
   };
 
@@ -1546,6 +1546,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       { id: 'Inspections', label: 'QC Inspections (Visual)', desc: 'First-Article inspection & defect categorization for crates' },
                       { id: 'Final Inspection', label: 'Final QC Inspection', desc: 'High-speed continuous QR scanning of packed items & pre-printed labels' },
                       { id: 'Packing', label: 'Packing App', desc: 'Secondary packaging, box scanning & barcode labels' },
+                      { id: 'Inventory', label: 'Inventory & Store', desc: 'WIP & FG stock reporting, store inwarding QR scanner & movement ledger' },
                       { id: 'Batch Log', label: 'Batch Logs', desc: 'Batch traceability, lot genealogy & bin breakdown' },
                       { id: 'Shift Log', label: 'Shift Logs', desc: 'Shift output logs & supervisor handover records' },
                       { id: 'Breakdowns', label: 'Breakdowns', desc: 'Maintenance downtime & resolution logging' },

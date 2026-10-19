@@ -124,10 +124,10 @@ export interface Packet {
   packedBy?: string;
   packedAt: string;
   shiftId?: string;
-  status?: 'Packed' | 'Despatched';
+  status?: 'Packed' | 'Final Inspected' | 'Despatched';
   qrCode?: string;
   storageBinId?: string; // e.g. APBIN-01
-  locationStatus?: 'WIP Storage' | 'In Transit' | 'Main Store' | 'Carton Packed';
+  locationStatus?: 'WIP Storage' | 'WIP Store' | 'In Transit' | 'Main Store' | 'FG Store' | 'Carton Packed';
   storageBinBoundAt?: string;
   storeReceivedAt?: string;
   storeReceivedBy?: string;
@@ -136,7 +136,7 @@ export interface Packet {
 
 export interface StorageBin {
   id: string; // e.g. APBIN-01
-  currentLocation: 'WIP Warehouse' | 'In Transit' | 'Main Store' | 'Empty';
+  currentLocation: 'WIP Warehouse' | 'WIP Store' | 'In Transit' | 'Main Store' | 'FG Store' | 'Empty';
   packetsCount?: number;
   totalQty?: number;
   lastTransferredAt?: string;
@@ -189,15 +189,15 @@ export interface ShiftSetting {
   endTime: string;   // '14:00'
 }
 
-export type Tab = 'Live Dashboard' | 'Shop Floor' | 'Production Planner' | 'Inspections' | 'Final Inspection' | 'Batch Log' | 'Shift Log' | 'Breakdowns' | 'Packing' | 'Machines' | 'About';
+export type Tab = 'Live Dashboard' | 'Shop Floor' | 'Production Planner' | 'Inspections' | 'Final Inspection' | 'Batch Log' | 'Shift Log' | 'Breakdowns' | 'Packing' | 'Inventory' | 'Machines' | 'About';
 
 export type RolePermissions = Record<string, Tab[]>;
 
 export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
-  Admin: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Machines', 'About'],
-  PowerUser: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'About'],
-  Supervisor: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'About'],
-  QC: ['Live Dashboard', 'Batch Log', 'Shift Log', 'Packing', 'Inspections', 'Final Inspection', 'About'],
+  Admin: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Inventory', 'Machines', 'About'],
+  PowerUser: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Inventory', 'About'],
+  Supervisor: ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Batch Log', 'Shift Log', 'Breakdowns', 'Packing', 'Inventory', 'About'],
+  QC: ['Live Dashboard', 'Batch Log', 'Shift Log', 'Packing', 'Inspections', 'Final Inspection', 'Inventory', 'About'],
 };
 
 export interface AppSettings {
