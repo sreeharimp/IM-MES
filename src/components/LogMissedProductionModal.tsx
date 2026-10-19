@@ -297,7 +297,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
         const pCode = prod?.batchIdentifier || prod?.itemCode?.slice(0, 2) || 'XX';
         const dateObj = new Date(targetDate);
         const generatedId = genBatchId(pCode, dateObj);
-        batchId = `${generatedId}-${selectedMachineId}`;
+        batchId = generatedId;
 
         const newBatchPayload = {
           id: batchId,
@@ -325,16 +325,18 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
       const timeSpanMs = Math.max(1000, shiftEnd.getTime() - shiftStart.getTime());
       const stepMs = Math.floor(timeSpanMs / Math.max(1, binDrafts.length));
 
-      const cleanBatch = batchId.endsWith(`-${selectedMachineId}`) ? batchId : `${batchId}-${selectedMachineId}`;
+      // Batch ID should never contain machine ID. Crate Unit ID format: {batch_id}-{machine_id}-{bin_number}
+      const cleanBatch = batchId.replace(new RegExp(`-${selectedMachineId}$`), '');
+      const unitPrefix = `${cleanBatch}-${selectedMachineId}`;
 
       const cratesToInsert = binDrafts.map((draft, idx) => {
         const binStart = new Date(shiftStart.getTime() + idx * stepMs);
         const binEnd = new Date(shiftStart.getTime() + (idx + 1) * stepMs);
-        const cid = formatUnitId(`${cleanBatch}-${draft.binNumber}`, selectedMachineId);
+        const cid = formatUnitId(`${unitPrefix}-${draft.binNumber}`, selectedMachineId);
 
         return {
           id: cid,
-          batch_id: batchId,
+          batch_id: cleanBatch,
           machine_id: selectedMachineId,
           bin_number: draft.binNumber,
           shift_id: selectedShift,
@@ -362,7 +364,7 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
       const { data: latestBatchStats } = await supabase
         .from('crates')
         .select('net_qty')
-        .eq('batch_id', batchId);
+        .eq('batch_id', cleanBatch);
 
       const updatedCratesCount = latestBatchStats?.length || binDrafts.length;
       const updatedTotalOutput = (latestBatchStats || []).reduce((sum, c) => sum + (c.net_qty || 0), 0);
@@ -370,11 +372,11 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
       await supabase.from('batch_records').update({
         crates: updatedCratesCount,
         total_output: updatedTotalOutput
-      }).eq('id', batchId);
+      }).eq('id', cleanBatch);
 
       setSuccessInfo({
         count: binDrafts.length,
-        batchId,
+        batchId: cleanBatch,
         totalUnits: totalNetUnits
       });
 
