@@ -907,10 +907,30 @@ const TopBarClock: React.FC = React.memo(() => {
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
-  const [profile, setProfile] = useState<{ fullName: string, email: string, role: string, employeeCode?: string, mustChangePassword?: boolean } | null>(null);
+  const [profile, setProfile] = useState<{ fullName: string, email: string, role: string, employeeCode?: string, mustChangePassword?: boolean } | null>(() => {
+    try {
+      const cached = localStorage.getItem('immc_user_profile');
+      if (cached) return JSON.parse(cached);
+    } catch (_) {}
+    return null;
+  });
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
-  const [isViewOnly, setIsViewOnly] = useState(false);
+  const [isViewOnly, setIsViewOnly] = useState(() => {
+    try {
+      const cachedProf = localStorage.getItem('immc_user_profile');
+      if (cachedProf) {
+        const p = JSON.parse(cachedProf);
+        if (p.role === 'Admin' || p.email?.toLowerCase() === 'sreehari@agneypolysoft.com' || p.email?.toLowerCase().includes('admin')) {
+          localStorage.removeItem('isViewOnly');
+          return false;
+        }
+      }
+      return localStorage.getItem('isViewOnly') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
   const [isAuthorizedSession, setIsAuthorizedSession] = useState(false);
   const [showTakeControlModal, setShowTakeControlModal] = useState(false);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -974,10 +994,22 @@ const App: React.FC = () => {
     return () => window.removeEventListener('mes_permissions_updated', handlePermissionsUpdated);
   }, []);
 
+  const isAdminRole = profile?.role === 'Admin' || session?.user?.email?.toLowerCase() === 'sreehari@agneypolysoft.com' || session?.user?.email?.toLowerCase().includes('admin');
+  const isSupervisorRole = profile?.role === 'Supervisor';
+
+  // Admin is NEVER restricted to view-only mode
+  useEffect(() => {
+    if (isAdminRole) {
+      if (isViewOnly) setIsViewOnly(false);
+      localStorage.removeItem('isViewOnly');
+    }
+  }, [isAdminRole, isViewOnly]);
+
   // RBAC: Compute accessible tabs for the logged-in user's role
   const userPermissions: Tab[] = React.useMemo(() => {
     const role = profile?.role || 'Supervisor';
-    if (role === 'Admin') {
+    const emailLower = (profile?.email || session?.user?.email || '').toLowerCase();
+    if (role === 'Admin' || emailLower === 'sreehari@agneypolysoft.com' || emailLower.includes('admin')) {
       return ['Live Dashboard', 'Shop Floor', 'Production Planner', 'Inspections', 'Final Inspection', 'Packing', 'Batch Log', 'Shift Log', 'Breakdowns', 'Machines', 'About'];
     }
 
@@ -999,7 +1031,7 @@ const App: React.FC = () => {
 
     const basePermissions: Tab[] = Array.from(new Set(mappedPerms));
     return basePermissions;
-  }, [profile?.role, appSettings?.role_permissions, appSettings?.printLabels]);
+  }, [profile?.role, profile?.email, session?.user?.email, appSettings?.role_permissions, appSettings?.printLabels]);
 
   // If user does not have permission for the currently active tab, redirect to their first permitted tab
   useEffect(() => {
@@ -1010,12 +1042,19 @@ const App: React.FC = () => {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setSession(session);
         // Reset local flow states on session change
         setIsHandoverSummaryOpen(false);
         setIsInitialAssignmentOpen(false);
+        if (!session) {
+          localStorage.removeItem('immc_user_profile');
+          localStorage.removeItem('isViewOnly');
+          setIsViewOnly(false);
+          setIsAuthorizedSession(false);
+        }
     });
+    return () => subscription.unsubscribe();
   }, []);
 
   // Safety watchdog: Ensure profile is never permanently null if session is active
@@ -1025,14 +1064,18 @@ const App: React.FC = () => {
       setProfile(prev => {
         if (prev) return prev;
         console.warn('Profile initialization timed out. Using session fallback.');
+        const emailLower = (session.user?.email || '').toLowerCase();
+        const isAdminAccount = emailLower === 'sreehari@agneypolysoft.com' || emailLower.includes('admin');
         const fbName = session.user?.user_metadata?.full_name || session.user?.email?.split('@')[0] || 'User';
-        const fbRole = session.user?.user_metadata?.role || (session.user?.email?.toLowerCase().includes('admin') ? 'Admin' : 'Supervisor');
-        return {
+        const fbRole = session.user?.user_metadata?.role || (isAdminAccount ? 'Admin' : 'Supervisor');
+        const fallbackProf = {
           fullName: fbName,
           email: session.user?.email || '',
           role: fbRole,
           mustChangePassword: false
         };
+        try { localStorage.setItem('immc_user_profile', JSON.stringify(fallbackProf)); } catch (_) {}
+        return fallbackProf;
       });
     }, 3500);
     return () => clearTimeout(timeout);
@@ -1078,14 +1121,34 @@ const App: React.FC = () => {
           role_permissions: appData.role_permissions || localRolePerms || appData.print_labels?.role_permissions || undefined
         });
 
-        // 2b. Auto-Authorize if user is the active supervisor
-        if (pData && appData?.active_supervisor_name === pData.full_name && !appData?.pending_handover) {
+        // Resilient Profile Assignment
+        let activeProf = pData;
+        if (!activeProf && session.user.email) {
+          try {
+            const { data: profByEmail } = await supabase
+              .from('profiles')
+              .select('*')
+              .ilike('email', session.user.email)
+              .maybeSingle();
+            if (profByEmail) activeProf = profByEmail;
+          } catch (_) {}
+        }
+
+        const isUserAdmin = activeProf?.role === 'Admin' || session.user?.email?.toLowerCase() === 'sreehari@agneypolysoft.com' || session.user?.email?.toLowerCase().includes('admin');
+
+        // 2b. Auto-Authorize if user is Admin or the active on-duty supervisor
+        if (isUserAdmin || (pData && appData?.active_supervisor_name === pData.full_name && !appData?.pending_handover)) {
            setIsAuthorizedSession(true);
         }
 
-        // 2c. Check localStorage for View-Only persistence
-        const wasViewOnly = localStorage.getItem('isViewOnly') === 'true';
-        if (wasViewOnly) setIsViewOnly(true);
+        // 2c. Check localStorage for View-Only persistence (NEVER for Admin)
+        if (isUserAdmin) {
+          localStorage.removeItem('isViewOnly');
+          setIsViewOnly(false);
+        } else {
+          const wasViewOnly = localStorage.getItem('isViewOnly') === 'true';
+          if (wasViewOnly) setIsViewOnly(true);
+        }
         if (shiftData) setShiftSettings(shiftData.map((s: any) => ({ id: s.id, name: s.name, startTime: s.start_time, endTime: s.end_time })));
         if (machs) setMachines(machs.map((m: any) => ({
             id: m.id, name: m.name, model: m.model,
@@ -1105,27 +1168,16 @@ const App: React.FC = () => {
             oee: m.oee || 0, lastCleaningDone: m.last_cleaning_done, faiApproved: m.fai_approved
         })));
 
-        // Resilient Profile Assignment
-        let activeProf = pData;
-        if (!activeProf && session.user.email) {
-          try {
-            const { data: profByEmail } = await supabase
-              .from('profiles')
-              .select('*')
-              .ilike('email', session.user.email)
-              .maybeSingle();
-            if (profByEmail) activeProf = profByEmail;
-          } catch (_) {}
-        }
-
         if (activeProf) {
-          setProfile({ 
+          const profObj = { 
             fullName: activeProf.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User', 
             email: activeProf.email || session.user.email || '', 
-            role: activeProf.role || 'Supervisor', 
+            role: (isUserAdmin && activeProf.role !== 'Admin') ? 'Admin' : (activeProf.role || 'Supervisor'), 
             employeeCode: activeProf.employee_code, 
             mustChangePassword: !!activeProf.must_change_password 
-          });
+          };
+          setProfile(profObj);
+          try { localStorage.setItem('immc_user_profile', JSON.stringify(profObj)); } catch (_) {}
         } else {
           // Auto-create missing profile from whitelist for new signups
           let whitelist: any = null;
@@ -1141,7 +1193,7 @@ const App: React.FC = () => {
               full_name: whitelist?.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'New User',
               email: session.user.email,
               employee_code: whitelist?.employee_code || null,
-              role: whitelist?.role || 'Supervisor'
+              role: isUserAdmin ? 'Admin' : (whitelist?.role || 'Supervisor')
             }).select().maybeSingle();
             neu = data;
             if (createErr) console.warn('Auto-Profile creation notice:', createErr.message);
@@ -1151,14 +1203,16 @@ const App: React.FC = () => {
 
           // Guaranteed profile initialization so user NEVER hangs on Initializing
           const chosenName = neu?.full_name || whitelist?.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
-          const chosenRole = neu?.role || whitelist?.role || (session.user.email?.toLowerCase().includes('admin') ? 'Admin' : 'Supervisor');
-          setProfile({ 
+          const chosenRole = isUserAdmin ? 'Admin' : (neu?.role || whitelist?.role || 'Supervisor');
+          const profObj = { 
             fullName: chosenName, 
             email: session.user.email || '', 
             role: chosenRole, 
             employeeCode: neu?.employee_code || whitelist?.employee_code || undefined,
             mustChangePassword: false 
-          });
+          };
+          setProfile(profObj);
+          try { localStorage.setItem('immc_user_profile', JSON.stringify(profObj)); } catch (_) {}
         }
 
         if (prdData) setProducts(prdData.map((p: any) => ({ ...p, mouldId: p.mould_id, itemCode: p.item_code, batchIdentifier: p.batch_identifier, binQty: p.bin_qty, stdPackSize: p.std_pack_size })));
@@ -1195,12 +1249,16 @@ const App: React.FC = () => {
       } catch (err) { 
         console.error('Fetch Error:', err); 
         // Fallback profile if any query crashed
-        setProfile(prev => prev || {
+        const emailLower = (session.user?.email || '').toLowerCase();
+        const isAdminAccount = emailLower === 'sreehari@agneypolysoft.com' || emailLower.includes('admin');
+        const fallbackProf = {
           fullName: session.user?.user_metadata?.full_name || session.user?.email?.split('@')[0] || 'User',
           email: session.user?.email || '',
-          role: session.user?.email?.toLowerCase().includes('admin') ? 'Admin' : 'Supervisor',
+          role: isAdminAccount ? 'Admin' : 'Supervisor',
           mustChangePassword: false
-        });
+        };
+        setProfile(prev => prev || fallbackProf);
+        try { localStorage.setItem('immc_user_profile', JSON.stringify(fallbackProf)); } catch (_) {}
       }
     };
     fetchData();
@@ -1745,7 +1803,7 @@ const App: React.FC = () => {
         );
       case 'Packing': return <PackingPage machines={machines} products={products} batchRecords={batchRecords} operators={operators} appSettings={appSettings} supervisorName={profile?.fullName || ''} />;
       case 'Machines': 
-        if (!userPermissions.includes('Machines') && profile?.role !== 'Admin') {
+        if (!userPermissions.includes('Machines') && !isAdminRole) {
           setActiveTab(userPermissions[0] || 'Shop Floor');
           return (
             <div className="card" style={{ padding: '40px', textAlign: 'center', margin: '20px' }}>
@@ -1787,8 +1845,8 @@ const App: React.FC = () => {
     );
   }
 
-  // 1. Handover Flow (Only for supervisors in transition)
-  if (appSettings?.pendingHandover && !isAuthorizedSession && !isViewOnly && profile.role !== 'Admin' && profile.role !== 'PowerUser' && profile.role !== 'QC' && userPermissions.includes('Shop Floor')) {
+  // 1. Handover Flow (Only for on-duty supervisors in transition, NEVER Admin, PowerUser, or QC)
+  if (isSupervisorRole && !isAdminRole && appSettings?.pendingHandover && !isAuthorizedSession && !isViewOnly && userPermissions.includes('Shop Floor')) {
     if (profile.email.toLowerCase() === appSettings.lastHandoverSummary?.outgoing_supervisor_email?.toLowerCase()) {
       return (
         <div className="loading" style={{flexDirection:'column', gap:'20px'}}>
@@ -1812,8 +1870,8 @@ const App: React.FC = () => {
     );
   }
 
-  // 2. Login Mode Selection Logic (If predecessor hasn't signed out)
-  if (!isAuthorizedSession && !isViewOnly && profile.role !== 'Admin' && profile.role !== 'PowerUser' && profile.role !== 'QC' && userPermissions.includes('Shop Floor') && !appSettings?.pendingHandover) {
+  // 2. Login Mode Selection Logic (If predecessor hasn't signed out - ONLY for supervisors, NEVER Admin)
+  if (isSupervisorRole && !isAdminRole && !isAuthorizedSession && !isViewOnly && userPermissions.includes('Shop Floor') && !appSettings?.pendingHandover) {
     return (
       <div className="ov">
         <div className="modal animate-scale-in" style={{ width: '400px', textAlign:'center' }}>
@@ -1862,8 +1920,8 @@ const App: React.FC = () => {
     );
   }
 
-  // 3. Initial Onboarding Step (Operator Assignment)
-  if (isInitialAssignmentOpen && profile.role !== 'Admin' && profile.role !== 'PowerUser' && profile.role !== 'QC' && userPermissions.includes('Shop Floor')) {
+  // 3. Initial Onboarding Step (Operator Assignment - ONLY for supervisors, NEVER Admin)
+  if (isSupervisorRole && !isAdminRole && isInitialAssignmentOpen && userPermissions.includes('Shop Floor')) {
     return (
       <div style={{ height: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <ForceOperatorAssignmentModal 
@@ -2016,7 +2074,7 @@ const App: React.FC = () => {
             {userPermissions.includes('Breakdowns') && (
               <NavItem icon={<AlertCircle size={16}/>} label="Breakdowns" active={activeTab==='Breakdowns'} onClick={()=>{setActiveTab('Breakdowns'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
-            {!isViewOnly && (profile?.role === 'Admin' || userPermissions.includes('Machines')) && (
+            {(isAdminRole || (!isViewOnly && userPermissions.includes('Machines'))) && (
               <NavItem icon={<Cpu size={16}/>} label="Admin Console" active={activeTab==='Machines'} onClick={()=>{setActiveTab('Machines'); if(window.innerWidth <= 1024) setIsSidebarCollapsed(true);}}/>
             )}
             <div style={{ flex: 1 }} />
@@ -2069,7 +2127,7 @@ const App: React.FC = () => {
                       Set Active
                     </button>
                   )}
-                  {isViewOnly && (
+                  {isViewOnly && !isAdminRole && (
                     <span 
                       className="pill py" 
                       style={{ fontSize: '9px', padding: '1px 6px', cursor: 'pointer' }}
@@ -2097,7 +2155,7 @@ const App: React.FC = () => {
             <button 
               className="btn bdan bsm" 
               style={{ padding: '3px 8px', height: '26px', fontSize: '10px' }}
-              onClick={(profile?.role === 'Admin' || profile?.role === 'PowerUser' || profile?.role === 'QC' || !userPermissions.includes('Shop Floor') || isViewOnly) ? () => supabase.auth.signOut() : () => setIsHandoverSummaryOpen(true)}
+              onClick={(isAdminRole || profile?.role === 'PowerUser' || profile?.role === 'QC' || !userPermissions.includes('Shop Floor') || isViewOnly) ? () => supabase.auth.signOut() : () => setIsHandoverSummaryOpen(true)}
             >
               <LogOut size={12}/> <span style={{ fontSize: '10px', fontWeight: 600 }}>Logout</span>
             </button>
