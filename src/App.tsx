@@ -31,6 +31,7 @@ import LiveDashboardPage from './components/LiveDashboardPage';
 import { ProductionPlannerModule } from './components/planner/ProductionPlannerModule';
 import AboutPage from './components/AboutPage';
 import FinalInspectionHistoryPage from './components/FinalInspectionHistoryPage';
+import { getShiftForTimestamp } from './utils/shiftUtils';
 
 function NavItem({ icon, label, active, onClick }: any) {
   return (
@@ -1593,13 +1594,14 @@ const App: React.FC = () => {
       : `${absBatchId}-${latestMachine.id}`;
     const cid = formatUnitId(`${cleanBatch}-${bNo}`, latestMachine.id);
     
+    const binShift = getShiftForTimestamp(new Date(), shiftSettings);
     const neu: any = { 
       id: cid, batch_id: absBatchId, machine_id: latestMachine.id, bin_number: bNo, 
       start_time: new Date(latestMachine.bin_start_time || Date.now()).toISOString(), end_time: new Date().toISOString(), gross_qty: data.grossQty, 
       startup_scrap: data.startupScrap, qc_sample: data.qcSample, net_qty: data.netQty, 
       operator_id: latestMachine.current_operator_id || 'UNASSIGNED', supervisor_id: profile?.email || 'System', 
       mould_id: latestMachine.current_mould_id || null, material_batch: latestMachine.material_batch || null,
-      shift_id: appSettings?.currentShift || 'A',
+      shift_id: binShift,
       status: 'Pending Inspection' 
     };
 
@@ -1616,7 +1618,8 @@ const App: React.FC = () => {
       id: cid, batchId: neu.batch_id, machineId: neu.machine_id, binNumber: neu.bin_number, 
       startTime: neu.start_time, endTime: neu.end_time, grossQty: neu.gross_qty, 
       startupScrap: neu.startup_scrap, qcSample: neu.qc_sample, netQty: neu.net_qty, 
-      operatorId: neu.operator_id, supervisorId: neu.supervisor_id, status: 'Pending Inspection' 
+      operatorId: neu.operator_id, supervisorId: neu.supervisor_id, status: 'Pending Inspection',
+      shiftId: neu.shift_id
     } as unknown as Crate, ...prev]);
 
     const { error: crateErr } = await supabase.from('crates').insert(neu);

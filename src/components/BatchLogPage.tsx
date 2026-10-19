@@ -12,6 +12,7 @@ import {
   type BatchFinalInspectionSummary,
 } from '../services/finalInspectionService';
 import { resolveSupervisorName, type SupervisorRecord } from '../utils/supervisorUtils';
+import { getShiftForTimestamp } from '../utils/shiftUtils';
 import { LogMissedProductionModal } from './LogMissedProductionModal';
 
 interface BatchLogPageProps {
@@ -731,7 +732,7 @@ const BatchLogPage: React.FC<BatchLogPageProps> = ({
                                                     <td className="mono" style={{ fontWeight: 600 }}>Bin #{crate.binNumber}</td>
                                                       <td>
                                                         <span className="pill pg" style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px' }}>
-                                                          Shift {crate.shiftId || 'A'}
+                                                          Shift {(crate.endTime || crate.startTime) ? getShiftForTimestamp(crate.endTime || crate.startTime, shiftSettings) : (crate.shiftId || 'A')}
                                                         </span>
                                                       </td>
                                                       <td>

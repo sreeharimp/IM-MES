@@ -7,6 +7,7 @@ import type { Machine, Product, Operator, ShiftSetting, BatchRecord } from '../t
 import { supabase } from '../lib/supabase';
 import { formatUnitId, genBatchId } from '../utils/batchUtils';
 import type { SupervisorRecord } from '../utils/supervisorUtils';
+import { getShiftForTimestamp } from '../utils/shiftUtils';
 
 interface LogMissedProductionModalProps {
   machines?: Machine[];
@@ -37,16 +38,14 @@ export const LogMissedProductionModal: React.FC<LogMissedProductionModalProps> =
   onClose,
   onSuccess
 }) => {
-  // Default to yesterday's date (since missed shift is typically last night)
+  // Default to today's date
   const defaultDateStr = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
+    return new Date().toISOString().split('T')[0];
   }, []);
 
   // Form selections
   const [productionDate, setProductionDate] = useState<string>(defaultDateStr);
-  const [selectedShift, setSelectedShift] = useState<string>('C');
+  const [selectedShift, setSelectedShift] = useState<string>(() => getShiftForTimestamp(new Date(), shiftSettings));
   const [selectedMachineId, setSelectedMachineId] = useState<string>(machines[0]?.id || 'IMM-A');
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>(operators[0]?.id || '');
   const [selectedSupervisor, setSelectedSupervisor] = useState<string>(defaultSupervisorName || 'Nidhin Chandran');
