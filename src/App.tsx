@@ -1085,17 +1085,27 @@ const App: React.FC = () => {
     if (!session) return;
     const fetchData = async () => {
       try {
-        const [{data: appData}, {data: shiftData}, {data: machs}, {data: pData}, {data: prdData}, {data: opers}, {data: batRecs}, {data: mldData}, {data: rmData}, {data: pmData}, {data: crates}, {data: dTypes}, {data: bReasons}, {data: cTasks}] = await Promise.all([
+        // Staged Query Loading to protect PostgreSQL connection pool and prevent connection exhaustion
+        // Batch 1: Identity & Station Setup
+        const [{data: pData}, {data: appData}, {data: shiftData}, {data: machs}] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
           supabase.from('app_settings').select('*').eq('id', 'global').maybeSingle(),
           supabase.from('shift_settings').select('*').order('id'),
           supabase.from('machines').select('*').order('id'),
-          supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
+        ]);
+
+        // Batch 2: Production Master Data
+        const [{data: prdData}, {data: opers}, {data: mldData}, {data: rmData}, {data: pmData}] = await Promise.all([
           supabase.from('products').select('*'),
           supabase.from('operators').select('*'),
-          supabase.from('batch_records').select('*').order('start_time', { ascending: false }).limit(60),
           supabase.from('moulds').select('*'),
           supabase.from('raw_materials').select('*'),
           supabase.from('approved_materials').select('*'),
+        ]);
+
+        // Batch 3: Operational Logs & Lookups
+        const [{data: batRecs}, {data: crates}, {data: dTypes}, {data: bReasons}, {data: cTasks}] = await Promise.all([
+          supabase.from('batch_records').select('*').order('start_time', { ascending: false }).limit(60),
           supabase.from('crates').select('*').eq('status', 'Pending Inspection').order('start_time', { ascending: false }).limit(60),
           supabase.from('defect_types').select('*').order('name'),
           supabase.from('breakdown_reasons').select('*').order('name'),
@@ -1820,7 +1830,9 @@ const App: React.FC = () => {
     }
   };
 
-  if (!session) return <Login onSuccess={() => {}} />;
+  if (!session) return <Login onSuccess={(newSession) => {
+    if (newSession) setSession(newSession);
+  }} />;
   if (!profile) {
     return (
       <div className="loading" style={{ flexDirection: 'column', gap: '16px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

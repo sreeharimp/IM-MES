@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { ShieldCheck, Lock, Mail } from 'lucide-react';
 
 interface LoginProps {
-  onSuccess: () => void;
+  onSuccess: (session?: any) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onSuccess }) => {
@@ -20,64 +20,71 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     setError(null);
     const normalizedEmail = email.toLowerCase().trim();
 
-    if (isSignUp) {
-      if (password !== confirmPassword) {
-        setError('Passwords do not match');
-        setLoading(false);
-        return;
-      }
-
-      // Pre-check whitelist to enforce "Admin Permission Required"
-      const { data: whitelistData, error: whitelistError } = await supabase
-        .from('authorized_supervisors')
-        .select('*')
-        .eq('email', normalizedEmail)
-        .maybeSingle();
-
-      if (whitelistError || !whitelistData) {
-        setError('Authorization Denied: This email has not been whitelisted by an Admin.');
-        setLoading(false);
-        return;
-      }
-    }
-
-    const { data: authData, error } = isSignUp 
-      ? await supabase.auth.signUp({ email: normalizedEmail, password })
-      : await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
-
-    if (authData?.user) {
-      try {
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('is_active, revoked_reason')
-          .eq('id', authData.user.id)
-          .maybeSingle();
-
-        if (prof && prof.is_active === false) {
-          await supabase.auth.signOut();
-          setError('Access Denied: Your account has been revoked by an Administrator.');
+    try {
+      if (isSignUp) {
+        if (password !== confirmPassword) {
+          setError('Passwords do not match');
           setLoading(false);
           return;
         }
 
-        if (prof?.revoked_reason === 'FORCE_LOGOUT') {
-          await supabase
-            .from('profiles')
-            .update({ revoked_reason: null, last_seen_at: new Date().toISOString() })
-            .eq('id', authData.user.id);
-        }
-      } catch (err) {
-        console.warn('Profile status validation warning:', err);
-      }
-    }
+        // Pre-check whitelist to enforce "Admin Permission Required"
+        const { data: whitelistData, error: whitelistError } = await supabase
+          .from('authorized_supervisors')
+          .select('*')
+          .eq('email', normalizedEmail)
+          .maybeSingle();
 
-    onSuccess();
+        if (whitelistError || !whitelistData) {
+          setError('Authorization Denied: This email has not been whitelisted by an Admin.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      const { data: authData, error } = isSignUp 
+        ? await supabase.auth.signUp({ email: normalizedEmail, password })
+        : await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (authData?.user) {
+        try {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('is_active, revoked_reason')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+
+          if (prof && prof.is_active === false) {
+            await supabase.auth.signOut();
+            setError('Access Denied: Your account has been revoked by an Administrator.');
+            setLoading(false);
+            return;
+          }
+
+          if (prof?.revoked_reason === 'FORCE_LOGOUT') {
+            await supabase
+              .from('profiles')
+              .update({ revoked_reason: null, last_seen_at: new Date().toISOString() })
+              .eq('id', authData.user.id);
+          }
+        } catch (err) {
+          console.warn('Profile status validation warning:', err);
+        }
+      }
+
+      onSuccess(authData?.session);
+    } catch (err: any) {
+      console.error('Login submission error:', err);
+      setError(err?.message || 'Authentication failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
